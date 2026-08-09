@@ -1,0 +1,7 @@
+{
+  "instance_name": "main_hermes",
+  "account_email": "primary_account",
+  "model_provider": "nvidia",
+  "model_name": "z-ai/glm-5.2",
+  "subagents": []
+}

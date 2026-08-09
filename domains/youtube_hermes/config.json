@@ -1,0 +1,13 @@
+{
+  "instance_name": "youtube_hermes",
+  "account_email": "yatharth.sachdeva23@gmail.com",
+  "chrome_profile_directory": "Profile 8",
+  "model_provider": "nvidia",
+  "model_name": "z-ai/glm-5.2",
+  "subagents": [
+    "trend_researcher",
+    "scriptwriter_qa",
+    "flow_video_generator",
+    "youtube_publisher_comments"
+  ]
+}

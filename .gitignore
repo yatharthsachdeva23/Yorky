@@ -1,0 +1,6 @@
+venv/
+data/chrome_profile/
+data/flow_browser_profile/
+data/clips/
+*.log
+__pycache__/

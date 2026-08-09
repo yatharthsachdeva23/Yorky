@@ -1,0 +1,11 @@
+{
+  "instance_name": "instagram_hermes",
+  "account_email": "instagram_account",
+  "chrome_profile_directory": "Profile 1",
+  "model_provider": "nvidia",
+  "model_name": "z-ai/glm-5.2",
+  "subagents": [
+    "reels_planner",
+    "instagram_publisher"
+  ]
+}
