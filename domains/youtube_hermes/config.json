@@ -3,7 +3,7 @@
   "account_email": "yatharth.sachdeva23@gmail.com",
   "chrome_profile_directory": "Profile 8",
   "model_provider": "nvidia",
-  "model_name": "z-ai/glm-5.2",
+  "model_name": "nvidia/nemotron-3-super-120b-a12b",
   "subagents": [
     "trend_researcher",
     "scriptwriter_qa",

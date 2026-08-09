@@ -2,6 +2,6 @@
   "instance_name": "main_hermes",
   "account_email": "primary_account",
   "model_provider": "nvidia",
-  "model_name": "z-ai/glm-5.2",
+  "model_name": "nvidia/nemotron-3-super-120b-a12b",
   "subagents": []
 }

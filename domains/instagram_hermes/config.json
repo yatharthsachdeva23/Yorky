@@ -3,7 +3,7 @@
   "account_email": "instagram_account",
   "chrome_profile_directory": "Profile 1",
   "model_provider": "nvidia",
-  "model_name": "z-ai/glm-5.2",
+  "model_name": "nvidia/nemotron-3-super-120b-a12b",
   "subagents": [
     "reels_planner",
     "instagram_publisher"
