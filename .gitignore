@@ -1,6 +1,10 @@
 venv/
-data/chrome_profile/
-data/flow_browser_profile/
-data/clips/
+.env
+data/
+state/
+*.db
 *.log
 __pycache__/
+.worktrees/
+scratch/
+*.json
