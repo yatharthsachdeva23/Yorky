@@ -1,0 +1,128 @@
+=== STRUCTURE PROMPT ===
+================================================================================
+AUTONOMOUS CLIP STRUCTURE DECISION
+================================================================================
+Based on the full video context above, you must NOW decide the optimal 4-clip structure (each exactly 15 seconds = ~35-40 words voiceover) for this 60-second YouTube Short.
+
+FULL CONTENT TO DISTRIBUTE:
+- Topic: 🚨 You Should Do This NOW: Mock Test Strategy for JEE Main 2027 - Importance & Attempt Strategy
+- Pain Points: 5 items
+- Myths to Bust: 5 items
+- Key Angles: 5 items
+- CTA: Like, share, subscribe, and comment your mock test doubts below.
+- Urgency Hooks: ['LAST CHANCE – Start mocks NOW, 5 months to JEE Main 2027!', 'STOP waiting for syllabus finish – mocks DIAGNOSE gaps, do not test completion!', '90% score myth is KILLING your prep – any score teaches you something!', 'Every mock skipped = one less diagnostic data point for your rank!']
+
+PLANNER'S SUGGESTED OUTLINE (you may RESTRUCTURE this):
+  1. Hook (0-3s): Shock urgency - 5 months to JEE Main 2027
+  2. Why mocks matter today (3-18s): Myth 1-5 busting + diagnostic value
+  3. How to attempt a mock strategically (18-33s): Timer, order, marking, time/section
+  4. Post-mock analysis routine (33-48s): Categorize, update weak list, adjust targets
+  5. CTA (48-60s): Generic like/share/subscribe/comment + start today
+
+================================================================================
+RULES FOR CLIP STRUCTURE:
+================================================================================
+1. EXACTLY 4 clips × 15 seconds = 60 seconds total (no more, no less)
+2. Clip 1 (0-15s): MUST contain the HOOK in first 3 seconds + setup
+3. Clip 2 (15-30s): Core content - myths, why it matters, key insights
+4. Clip 3 (30-45s): Practical strategy / how-to / actionable steps
+4. Clip 4 (45-60s): CTA + urgency + thumbnail concept (last 1 second)
+5. Each clip ≈ 35-40 words voiceover at 150 wpm
+6. Hook must be in FIRST 3 seconds of Clip 1
+7. Thumbnail concept must appear in LAST 1 second of Clip 4
+8. Clips must flow seamlessly - cliffhangers between clips
+9. NO academic teaching - ONLY mentoring/strategy/process
+10. Hinglish mandatory in every clip
+
+================================================================================
+YOUR TASK:
+================================================================================
+Analyze the planner's outline and the full content. Decide the optimal 4-clip breakdown.
+You MAY combine, split, or restructure sections to fit exactly 4×15s clips.
+For example: If planner says "Hook (0-3s)" + "Why mocks (3-18s)" = 18s total, 
+you might put Hook(3s) + part of Why(12s) in Clip 1, remaining Why(3s) + How(12s) in Clip 2, etc.
+
+OUTPUT FORMAT (JSON):
+{
+  "clips": [
+    {"section": "Hook + Why mocks matter (part 1)", "focus": "Shock urgency + myth 1-2 busted", "approx_words": 38},
+    {"section": "Why mocks matter (part 2) + How to attempt", "focus": "Myth 3-5 + practical timer setup", "approx_words": 38},
+    {"section": "How to attempt (cont.) + Post-mock analysis", "focus": "Full paper strategy + mistake categorization", "approx_words": 38},
+    {"section": "Post-mock analysis (cont.) + CTA", "focus": "Weak topic adjustment + urgency CTA", "approx_words": 38}
+  ],
+  "reasoning": "Brief explanation of how you split the content to fit 4×15s"
+}
+
+Output ONLY valid JSON. No markdown, no explanation.
+
+=== CLIP 1 PROMPT ===
+================================================================================
+CLIP 1 OF 4 - GENERATE DETAILED FLOW PROMPT
+================================================================================
+SECTION: Hook + Myth 1-2
+FOCUS: Shock urgency + bust myths: mocks only after syllabus & need 90%+
+TARGET WORDS: ~38 words (15 seconds at 150 wpm)
+NEXT SECTION: END SCREEN
+IS FIRST CLIP: True
+IS LAST CLIP: True
+SEGMENT: mock_strategy
+PRIMARY URGENCY HOOK: LAST CHANCE – Start mocks NOW, 5 months to JEE Main 2027!
+
+CLIP-SPECIFIC GUIDANCE:
+HOOK - SHOCK THEM INTO ACTION
+- Character: SHOCKED/URGENT - eyes wide, eyebrows high, mouth slightly open, lean forward aggressively
+- Background: Deep red → black gradient, pulsing alarm light, digital countdown "5:00:00:00" (months:days:hours:mins)
+- Lighting: Harsh top-down key (interrogation style), cool blue rim, dramatic shadows
+- Text: TOP '🚨 LAST CHANCE' large red outline pulse. MIDDLE 'MOCKS = DIAGNOSTIC TOOL' white. BOTTOM '5 MONTHS' yellow.
+- Background voices: FAINT panicked student voices "syllabus nahi hua... kaise mock...?" overlapping
+- SFX: Heartbeat (fast), emergency alert beep every 3s
+
+REQUIREMENTS FOR THIS CLIP:
+1. Voiceover: EXACT Hinglish, 36-41 words (15s at speaking pace)
+2. Flow Prompt: Comprehensive single paragraph with ALL details (camera, character mood/expression/body language, background, lighting, text overlays, graphics, audio layers, transition)
+3. Visual Cues: 3-5 key on-screen elements
+4. Transition Note: How this leads to next clip
+
+SPECIAL AUDIO LAYER IDEAS FOR THIS CLIP:
+- Clip 1 (Hook): Heartbeat SFX, distant student whispers "bhaiya..."
+- Clip 2 (Why/What): Notification ping sounds, keyboard typing, page flip
+- Clip 3 (How/Strategy): Timer tick-tock, mouse click, whoosh transitions
+- Clip 4 (CTA): Subscribe bell sound, crowd cheer faint, final heartbeat
+
+OUTPUT: JSON only with keys: flow_prompt, voiceover_text, visual_cues, transition_note
+
+=== CLIP 2 PROMPT ===
+================================================================================
+CLIP 2 OF 4 - GENERATE DETAILED FLOW PROMPT
+================================================================================
+SECTION: Why mocks matter (part 2) + How to attempt
+FOCUS: Myths 3-5 + practical timer setup
+TARGET WORDS: ~38 words (15 seconds at 150 wpm)
+NEXT SECTION: END SCREEN
+IS FIRST CLIP: False
+IS LAST CLIP: True
+SEGMENT: mock_strategy
+PRIMARY URGENCY HOOK: LAST CHANCE – Start mocks NOW, 5 months to JEE Main 2027!
+
+CLIP-SPECIFIC GUIDANCE:
+WHY MOCKS MATTER - MYTH BUSTING WITH ENERGY
+- Character: ENERGETIC/MYTH-BUSTER - eyebrows furrowed, confident smirk, chopping hand gestures, pointing at invisible myths
+- Background: Split screen - LEFT: "OLD WAY" (student buried in books, gray), RIGHT: "MOCK FIRST" (student confident, green checkmarks)
+- Lighting: High-key, bright, energetic - key light front, fill light soft, warm practicals
+- Text: TOP 'MYTH vs REALITY'. LEFT column: 'Syllabus first ✗', '90% score ✗', 'More mocks ✗'. RIGHT: 'Gaps first ✓', 'Any score ✓', 'Analysis ✓'
+- Background voices: Each myth busted → "POP!" sound + whisper "bakwaas!"
+- SFX: Myth bust = balloon pop, Reality = cash register 'cha-ching'
+
+REQUIREMENTS FOR THIS CLIP:
+1. Voiceover: EXACT Hinglish, 36-41 words (15s at speaking pace)
+2. Flow Prompt: Comprehensive single paragraph with ALL details (camera, character mood/expression/body language, background, lighting, text overlays, graphics, audio layers, transition)
+3. Visual Cues: 3-5 key on-screen elements
+4. Transition Note: How this leads to next clip
+
+SPECIAL AUDIO LAYER IDEAS FOR THIS CLIP:
+- Clip 1 (Hook): Heartbeat SFX, distant student whispers "bhaiya..."
+- Clip 2 (Why/What): Notification ping sounds, keyboard typing, page flip
+- Clip 3 (How/Strategy): Timer tick-tock, mouse click, whoosh transitions
+- Clip 4 (CTA): Subscribe bell sound, crowd cheer faint, final heartbeat
+
+OUTPUT: JSON only with keys: flow_prompt, voiceover_text, visual_cues, transition_note

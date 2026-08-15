@@ -78,6 +78,17 @@ class ResearcherAgent:
                     return extracted
                 raise ValueError(f"No valid JSON found in response. Full text: {text[:500]}")
             
+            elif response.status_code == 429:
+                # Quota exceeded - wait and retry with longer backoff
+                if attempt < max_retries - 1:
+                    wait_time = 30 * (attempt + 1)  # 30s, 60s, 90s
+                    print(f"[RESEARCHER] Gemini 429 (quota exceeded), retrying in {wait_time}s...")
+                    import time
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise Exception(f"Gemini API error 429 after {max_retries} retries: {response.text}")
+            
             elif response.status_code == 503:
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
@@ -277,7 +288,8 @@ AUDIENCE MATRIX (MUST SELECT EXACTLY ONE SEGMENT):
 2. 12TH / DROPPERS: If NO valid counseling OR user requests → topic MUST use target_exam_12th_droppers
    Example: "August Backlog Clearance Strategy for JEE Main 2027 Session 1"
 3. 11TH GRADE: If user requests 11th focus → topic MUST use target_exam_11th
-   Example: "11th Class August Roadmap for JEE Main 2028"
+   Example: "11th Class August Plan for JEE Main 2028 - 20 Months to JEE"
+   NOTE: August 11th is great start - 20 months to JEE. Many start in 12th, so this is ahead.
 
 USER DIRECTIVE: {user_feedback or 'Select best topic for RIGHT NOW'}
 
@@ -337,13 +349,17 @@ Return ONLY valid JSON matching ResearchResult schema:
             )
         else:  # 11th grade
             target = calendar_facts.get('target_exam_11th', 'JEE Main 2028')
+            # Extract exam name without year for cleaner topic
+            exam_name = target.split(' - ')[0] if ' - ' in target else target
+            # August 11th is still a great time to start - 20 months to JEE.
+            # Many start in 12th, so 11th August is actually ahead of them.
             return ResearchResult(
-                selected_topic=f"🚨 11th Class August Roadmap for {target} - Start Early, Stay Ahead",
-                rationale=f"11th graders starting now have 16+ months to {target}. August is the foundation-building window.",
-                demand_signals=["YouTube search: 'JEE 2028 preparation from 11th'", "Quora: 'When to start JEE prep in 11th'"],
+                selected_topic=f"🚨 11th Class August Plan for {exam_name} - 20 Months to JEE",
+                rationale=f"11th grade August gives you 20 months to JEE - that's plenty of time. Most students start in 12th, so starting now puts you ahead. Build foundations, not panic.",
+                demand_signals=["YouTube search: '11th class JEE preparation plan'", "Quora: 'How to prepare for JEE from 11th class'"],
                 target_audience="11th",
-                seasonal_relevance="August 11th = new academic year start, best time to build habits",
-                competitor_gaps="Others ignore 11th graders; we give subject-wise weekly milestones"
+                seasonal_relevance="August = 20 months to JEE 2028, perfect foundation-building window",
+                competitor_gaps="Others overcomplicate; we give simple subject-wise weekly plan for 20 months"
             )
     
     def execute(self, run: PipelineRun, user_feedback: Optional[str] = None, 

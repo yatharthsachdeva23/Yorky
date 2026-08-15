@@ -4,6 +4,7 @@ data/
 state/
 *.db
 *.log
+*_output.txt
 __pycache__/
 .worktrees/
 scratch/

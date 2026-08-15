@@ -65,6 +65,16 @@ class ClipScript:
     visual_cues: List[str] = field(default_factory=list)  # On-screen text, graphics
     transition_note: str = ""             # How to transition to next clip
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "clip_index": self.clip_index,
+            "duration_seconds": self.duration_seconds,
+            "flow_prompt": self.flow_prompt,
+            "voiceover_text": self.voiceover_text,
+            "visual_cues": self.visual_cues,
+            "transition_note": self.transition_note
+        }
+
 
 @dataclass
 class VideoScript:
@@ -76,9 +86,22 @@ class VideoScript:
     clips: List[ClipScript] = field(default_factory=list)
     total_duration_seconds: int = 0
     thumbnail_concept: str = ""           # Brief for Image Gen
+    google_flow_context_prompt: str = ""  # Global context for Google Flow/Veo 3 (Omni Flash)
     
     def __post_init__(self):
         self.total_duration_seconds = sum(c.duration_seconds for c in self.clips)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "topic": self.topic,
+            "title": self.title,
+            "description": self.description,
+            "tags": self.tags,
+            "clips": [c.to_dict() for c in self.clips],
+            "total_duration_seconds": self.total_duration_seconds,
+            "thumbnail_concept": self.thumbnail_concept,
+            "google_flow_context_prompt": self.google_flow_context_prompt
+        }
 
 
 @dataclass
@@ -86,12 +109,12 @@ class ContentPlan:
     """Subagent 2 (Planner) output - content structure, not script."""
     topic: str
     audience_pain_points: List[str]
-    myths_misconceptions: List[str]
     key_angles: List[str]                 # Unique angles to cover
     structure_outline: List[str]          # Ordered sections
-    cta: str                              # Call to action
+    cta: str                              # Call to action (generic: like/share/subscribe/comment)
     urgency_hooks: List[str]              # Urgency markers for hooks
-    estimated_clips: int = 4              # Default 4 clips = 60s
+    myths_misconceptions: List[str] = field(default_factory=list)  # Optional
+    # estimated_clips removed - Script Writer decides clip count
 
 
 @dataclass
