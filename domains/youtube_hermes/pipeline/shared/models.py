@@ -138,6 +138,25 @@ class ThumbnailArtifact:
 
 
 @dataclass
+class ImageArtifact:
+    """Subagent 7 (Video Maker) output per generated image (thumbnail/keyframe)."""
+    image_type: str              # "thumbnail" | "keyframe_clip_1" | etc.
+    image_path: str
+    prompt_used: str
+    aspect_ratio: str = "9:16"
+    generation_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "image_type": self.image_type,
+            "image_path": self.image_path,
+            "prompt_used": self.prompt_used,
+            "aspect_ratio": self.aspect_ratio,
+            "generation_metadata": self.generation_metadata,
+        }
+
+
+@dataclass
 class VideoClipArtifact:
     """Subagent 7 (Video Maker) output per clip."""
     clip_index: int

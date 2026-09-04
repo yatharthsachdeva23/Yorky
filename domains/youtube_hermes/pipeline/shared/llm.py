@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 class LLMClient(ABC):
     """Abstract base for LLM clients."""
 
+    def __init__(self, agent_name: str = "unknown"):
+        self.agent_name = agent_name
+
     @abstractmethod
     def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
         pass
@@ -29,7 +32,8 @@ class LLMClient(ABC):
 class NVIDIAClient(LLMClient):
     """NVIDIA Nemotron 3 Ultra / Super client via NVIDIA API."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "nvidia/nemotron-3-ultra-550b-a55b"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "nvidia/nemotron-3-ultra-550b-a55b", agent_name: str = "unknown"):
+        super().__init__(agent_name)
         self.api_key = api_key or os.getenv("NVIDIA_API_KEY")
         self.model = model
         self.base_url = "https://integrate.api.nvidia.com/v1"
@@ -375,7 +379,8 @@ class NVIDIAClient(LLMClient):
 class GeminiClient(LLMClient):
     """Google Gemini client (API) - using Vertex AI (google-cloud-aiplatform) for Python 3.7 compatibility."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash", agent_name: str = "unknown"):
+        super().__init__(agent_name)
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.model = model
         self.use_fallback = not self.api_key
@@ -442,11 +447,18 @@ class GeminiClient(LLMClient):
         raise ValueError(f"Could not parse JSON from Gemini: {response_text[:300]}")
 
 
-class BrowserImageGenClient:
+class BrowserImageGenClient(LLMClient):
     """Browser-based image generation client (for thumbnails, etc.)."""
 
-    def __init__(self):
+    def __init__(self, agent_name: str = "unknown"):
+        super().__init__(agent_name)
         self.available = True
+
+    def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
+        raise NotImplementedError("Use generate_image()")
+
+    def generate_json(self, prompt: str, system_prompt: Optional[str] = None, schema: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
+        raise NotImplementedError("Use generate_image()")
 
     def generate_image(self, prompt: str, **kwargs) -> str:
         """Generate image and return local path or URL."""
@@ -455,16 +467,16 @@ class BrowserImageGenClient:
 
 
 # Client factory
-def get_nvidia_client(model: str = "nvidia/nemotron-3-ultra-550b-a55b") -> NVIDIAClient:
-    return NVIDIAClient(model=model)
+def get_nvidia_client(model: str = "nvidia/nemotron-3-ultra-550b-a55b", agent_name: str = "unknown") -> NVIDIAClient:
+    return NVIDIAClient(model=model, agent_name=agent_name)
 
 
-def get_gemini_client(model: str = "gemini-2.5-flash") -> GeminiClient:
-    return GeminiClient(model=model)
+def get_gemini_client(model: str = "gemini-2.5-flash", agent_name: str = "unknown") -> GeminiClient:
+    return GeminiClient(model=model, agent_name=agent_name)
 
 
-def get_browser_image_gen() -> BrowserImageGenClient:
-    return BrowserImageGenClient()
+def get_browser_image_gen(agent_name: str = "unknown") -> BrowserImageGenClient:
+    return BrowserImageGenClient(agent_name=agent_name)
 
 
 def get_system_prompt(agent_role: str) -> str:
