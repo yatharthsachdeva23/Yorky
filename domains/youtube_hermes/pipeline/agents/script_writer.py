@@ -23,7 +23,7 @@ class ScriptWriterAgent:
     """Generates VideoScript from ContentPlan using NVIDIA LLM with detailed context and clip-by-clip generation."""
 
     def __init__(self):
-        self.llm = get_nvidia_client()
+        self.llm = get_nvidia_client(agent_name="script_writer")
         self.system_prompt = get_system_prompt("script_writer")
 
     def write_script(self, run: PipelineRun) -> VideoScript:
@@ -244,6 +244,8 @@ RULES (NON-NEGOTIABLE)
 ACKNOWLEDGMENT REQUIRED
 ================================================================================
 Reply with exactly: "CONTEXT UNDERSTOOD. Ready for clip-by-clip generation. Don't show clip numbers - just generate the clips as I give you prompts one by one."
+
+Understand this whole context now. I will give you each clip prompt one by one and you make it.
 """
 
     def _build_google_flow_context_prompt(self, plan: ContentPlan) -> str:
@@ -293,6 +295,8 @@ CTA: {plan.cta}
 Urgency Hooks: {', '.join(plan.urgency_hooks)}
 ================================================================================
 CLIP PROMPTS FOLLOW (one per clip with complete per-clip specs)
+
+Understand this whole context now. I will give you each clip prompt one by one and you make it.
 """
 
     def _build_clip_prompt(self, plan: ContentPlan, clip_index: int, clip_info: Dict, all_clips: List[Dict]) -> str:
@@ -817,7 +821,8 @@ Rules:
             description="Mock tests are NOT for after syllabus. They're your diagnostic tool from Day 1. Learn the exact strategy to attempt, analyze, and improve with every mock. 5 months to JEE Main 2027 - start TODAY!",
             tags=["JEE", "JEEMain2027", "MockTest", "Strategy", "Preparation"],
             clips=clips,
-            thumbnail_concept="START MOCKS NOW"
+            thumbnail_concept="START MOCKS NOW",
+            google_flow_context_prompt=self._build_google_flow_context_prompt(plan)
         )
 
     def _drop_vs_college_fallback(self, plan: ContentPlan) -> VideoScript:
@@ -861,7 +866,8 @@ Rules:
             description="The dilemma every low-rank aspirant faces. Data-driven decision matrix, ROI reality check, and personal checklist. No generic advice - YOUR rank, YOUR decision.",
             tags=["JEE", "DropYear", "CollegeDecision", "Counseling2026", "CareerGuidance"],
             clips=clips,
-            thumbnail_concept="DROP OR JOIN?"
+            thumbnail_concept="DROP OR JOIN?",
+            google_flow_context_prompt=self._build_google_flow_context_prompt(plan)
         )
 
     def _backlog_fallback(self, plan: ContentPlan) -> VideoScript:
@@ -905,7 +911,8 @@ Rules:
             description="Overwhelmed by 11th backlog and 12th syllabus? 70/30 split strategy, mock-first approach, realistic weekly plan. No impossible timetables - just what works in 5 months.",
             tags=["JEE", "JEEMain2027", "BacklogClearance", "11thBacklog", "Strategy"],
             clips=clips,
-            thumbnail_concept="BACKLOG CLEARED"
+            thumbnail_concept="BACKLOG CLEARED",
+            google_flow_context_prompt=self._build_google_flow_context_prompt(plan)
         )
 
     def _11th_grade_fallback(self, plan: ContentPlan) -> VideoScript:
@@ -949,7 +956,8 @@ Rules:
             description="11th grade me ho? 20 months hain - kaafi time hai agar strategy sahi ho. Foundation first, advanced later. School+JEE integration, simple daily habits, no burnout. Complete roadmap!",
             tags=["JEE", "JEE2028", "11thGrade", "Foundation", "Roadmap"],
             clips=clips,
-            thumbnail_concept="20 MONTHS LEFT"
+            thumbnail_concept="20 MONTHS LEFT",
+            google_flow_context_prompt=self._build_google_flow_context_prompt(plan)
         )
 
     def _counseling_fallback(self, plan: ContentPlan) -> VideoScript:
@@ -993,7 +1001,8 @@ Rules:
             description="CSAB Special Round, IPU Spot Round 2, JAC Spot - deadlines Aug 18-20! Complete dates, process, document checklist, and state-specific guidance. Don't lose your seat - act TODAY!",
             tags=["JEE", "CSAB2026", "IPUCounseling", "SpotRound", "Deadlines"],
             clips=clips,
-            thumbnail_concept="DEADLINES THIS WEEK"
+            thumbnail_concept="DEADLINES THIS WEEK",
+            google_flow_context_prompt=self._build_google_flow_context_prompt(plan)
         )
 
     def _generic_fallback(self, plan: ContentPlan) -> VideoScript:
@@ -1014,7 +1023,8 @@ Rules:
             description=f"{plan.topic}. {plan.cta}",
             tags=["JEE", "Preparation", "Strategy"],
             clips=clips,
-            thumbnail_concept=plan.urgency_hooks[0].replace("🚨", "").strip() if plan.urgency_hooks else "TAKE ACTION"
+            thumbnail_concept=plan.urgency_hooks[0].replace("🚨", "").strip() if plan.urgency_hooks else "TAKE ACTION",
+            google_flow_context_prompt=self._build_google_flow_context_prompt(plan)
         )
 
     def _validate_script(self, script: VideoScript, plan: ContentPlan) -> bool:

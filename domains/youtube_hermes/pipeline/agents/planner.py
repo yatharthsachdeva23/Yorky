@@ -16,7 +16,7 @@ class PlannerAgent:
     """Subagent 2: Plans video content structure from research topic."""
 
     def __init__(self):
-        self.llm = get_nvidia_client()
+        self.llm = get_nvidia_client(agent_name="planner")
         self.system_prompt = get_system_prompt("planner")
 
     def _sanitize_cta(self, cta: str) -> str:

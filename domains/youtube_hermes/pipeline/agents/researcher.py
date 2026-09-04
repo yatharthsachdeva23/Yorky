@@ -4,6 +4,7 @@ Pipeline:
   Call 1: Live Fact & NTA Calendar Extraction via Google News RSS + Gemini
   Call 2: Topic Selection & Audience Matrix Enforcement via Gemini
 Production Lag Filter: 3-5 days (reject counseling deadlines < 4 days away)
+Upper Bound: 25 days max (optimal window 4-25 days)
 """
 from __future__ import annotations
 import os
@@ -25,25 +26,28 @@ load_dotenv()
 
 class ResearcherAgent:
     """Subagent 1: 100% Autonomous - 2-Call Gemini Decision Pipeline."""
-    
+
     def __init__(self):
         self.system_prompt = get_system_prompt("researcher")
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
-    
+
     def _call_gemini(self, prompt: str, system_prompt: str = None) -> str:
-        """Call Gemini 3.5 Flash API directly with requests. Handles 503 with retry."""
+        """Call Gemini 3.5 Flash API directly with requests. Handles 503 with retry.
+        
+        Robust JSON extraction: prioritizes valid OBJECT {...} over array [...].
+        """
         if not self.gemini_api_key:
             raise ValueError("GEMINI_API_KEY not set")
-        
+
         headers = {'Content-Type': 'application/json'}
-        
+
         contents = []
         if system_prompt:
             contents.append({"role": "user", "parts": [{"text": system_prompt}]})
             contents.append({"role": "model", "parts": [{"text": "Understood. I'll help you research JEE topics."}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
-        
+
         data = {
             'contents': contents,
             'generationConfig': {
@@ -51,33 +55,32 @@ class ResearcherAgent:
                 'temperature': 0.3
             }
         }
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             url = f"{self.gemini_url}?key={self.gemini_api_key}"
             response = requests.post(url, headers={'Content-Type': 'application/json'}, json=data, timeout=90)
-            
+
             if response.status_code == 200:
                 result = response.json()
                 text = result['candidates'][0]['content']['parts'][0]['text']
                 # Debug: log raw response
                 print(f"[RESEARCHER] Gemini raw response: {text[:200]}...")
-                # Robust JSON extraction
-                start = text.find('{')
-                end = text.rfind('}') + 1
-                if start >= 0 and end > start:
-                    extracted = text[start:end]
+
+                # Robust JSON extraction: prioritize valid OBJECT {...} over array [...]
+                extracted = self._extract_json_object(text)
+                if extracted:
                     print(f"[RESEARCHER] Extracted JSON: {extracted[:200]}...")
                     return extracted
-                # If no JSON found, try to find array
-                start = text.find('[')
-                end = text.rfind(']') + 1
-                if start >= 0 and end > start:
-                    extracted = text[start:end]
+
+                # Fallback: try array if no object found
+                extracted = self._extract_json_array(text)
+                if extracted:
                     print(f"[RESEARCHER] Extracted JSON array: {extracted[:200]}...")
                     return extracted
+
                 raise ValueError(f"No valid JSON found in response. Full text: {text[:500]}")
-            
+
             elif response.status_code == 429:
                 # Quota exceeded - wait and retry with longer backoff
                 if attempt < max_retries - 1:
@@ -88,7 +91,7 @@ class ResearcherAgent:
                     continue
                 else:
                     raise Exception(f"Gemini API error 429 after {max_retries} retries: {response.text}")
-            
+
             elif response.status_code == 503:
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
@@ -98,26 +101,111 @@ class ResearcherAgent:
                     continue
                 else:
                     raise Exception(f"Gemini API error 503 after {max_retries} retries: {response.text}")
-            
+
             else:
                 raise Exception(f"Gemini API error {response.status_code}: {response.text}")
-        
+
         raise Exception("Max retries exceeded")
-    
+
+    def _extract_json_object(self, text: str) -> Optional[str]:
+        """Extract the outermost valid JSON object {...} from text.
+        
+        Prioritizes {...} over [...] to avoid ResearchResult(**list) errors.
+        """
+        # Find all potential object boundaries
+        start_positions = []
+        for i, ch in enumerate(text):
+            if ch == '{':
+                start_positions.append(i)
+
+        for start in start_positions:
+            brace_count = 0
+            in_string = False
+            escape_next = False
+
+            for i in range(start, len(text)):
+                ch = text[i]
+
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+
+                if not in_string:
+                    if ch == '{':
+                        brace_count += 1
+                    elif ch == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            candidate = text[start:i+1]
+                            try:
+                                json.loads(candidate)
+                                return candidate
+                            except json.JSONDecodeError:
+                                break  # Not valid JSON, try next start position
+
+        return None
+
+    def _extract_json_array(self, text: str) -> Optional[str]:
+        """Extract the outermost valid JSON array [...] from text.
+        
+        Fallback when no valid object is found.
+        """
+        start = text.find('[')
+        if start == -1:
+            return None
+
+        brace_count = 0
+        in_string = False
+        escape_next = False
+
+        for i in range(start, len(text)):
+            ch = text[i]
+
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"' and not escape_next:
+                in_string = not in_string
+                continue
+
+            if not in_string:
+                if ch == '[':
+                    brace_count += 1
+                elif ch == ']':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        candidate = text[start:i+1]
+                        try:
+                            json.loads(candidate)
+                            return candidate
+                        except json.JSONDecodeError:
+                            break
+
+        return None
+
     def _search_google_news_rss(self, query: str) -> List[Dict[str, str]]:
         """Fetch live news/announcements via Google News RSS (no CAPTCHA, no API key)."""
         encoded_query = quote_plus(query)
         url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
-        
+
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        
+
         try:
             response = requests.get(url, headers=headers, timeout=15)
             if response.status_code != 200:
                 return []
-            
+
             root = ET.fromstring(response.text)
             articles = []
             for item in root.findall('.//item')[:15]:
@@ -125,7 +213,7 @@ class ResearcherAgent:
                 pub_date = item.find('pubDate')
                 description = item.find('description')
                 link = item.find('link')
-                
+
                 articles.append({
                     'title': title.text if title is not None else '',
                     'pub_date': pub_date.text if pub_date is not None else '',
@@ -136,12 +224,12 @@ class ResearcherAgent:
         except Exception as e:
             print(f"[RESEARCHER] Google News RSS search failed for '{query}': {e}")
             return []
-    
+
     def _perform_live_searches(self) -> List[Dict[str, str]]:
         """Execute autonomous live searches for current JEE/counseling announcements."""
         current_date = datetime.now()
         current_year = current_date.year
-        
+
         search_queries = [
             # COUNSELING (time-sensitive)
             f"JoSAA {current_year} counseling round schedule seat allocation site:josaa.nic.in",
@@ -157,7 +245,7 @@ class ResearcherAgent:
             "JEE burnout motivation consistency August 2026 site:youtube.com OR site:reddit.com",
             "JEE Advanced 2027 preparation strategy 12th grade site:youtube.com OR site:quora.com",
         ]
-        
+
         all_articles = []
         for query in search_queries:
             print(f"[RESEARCHER] Live search: {query}")
@@ -168,7 +256,7 @@ class ResearcherAgent:
                     'articles': articles
                 })
         return all_articles
-    
+
     def _call_1_extract_calendar_facts(self, search_results: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         CALL 1: Live Fact & NTA Calendar Extraction
@@ -178,15 +266,15 @@ class ResearcherAgent:
         current_date = datetime.now()
         current_date_str = current_date.strftime("%B %d, %Y")
         current_year = current_date.year
-        
+
         formatted_results = []
         for result in search_results:
             formatted_results.append(f"QUERY: {result['query']}")
             for article in result['articles'][:8]:
                 formatted_results.append(f"  - [{article['pub_date'][:16]}] {article['title']} ({article['link']})")
-        
+
         combined_text = "\n".join(formatted_results)
-        
+
         prompt = f"""You are a JEE counseling expert. Extract EXACT calendar facts from LIVE Google News search results.
 
 TODAY: {current_date_str}
@@ -213,7 +301,7 @@ Rules:
 - Use "null" for uncertain dates
 - active_counseling_cycle must name the specific counseling cycle currently live
 - Return ONLY valid JSON. No markdown, no explanation."""
-        
+
         try:
             response_text = self._call_gemini(prompt, self.system_prompt)
             return json.loads(response_text)
@@ -221,7 +309,7 @@ Rules:
             print(f"[RESEARCHER] Call 1 (Calendar Extraction) failed: {e}")
             # Fallback with deterministic calendar based on current date
             return self._fallback_calendar_facts(current_date)
-    
+
     def _fallback_calendar_facts(self, current_date: datetime) -> Dict[str, Any]:
         """Deterministic fallback calendar based on NTA annual cycle."""
         year = current_date.year
@@ -239,8 +327,8 @@ Rules:
             "jee_main_2027_session_2_date": f"{year+1}-04-15",
             "jee_advanced_2027_date": f"{year+1}-07-21"
         }
-    
-    def _call_2_select_topic_with_audience_matrix(self, calendar_facts: Dict[str, Any], 
+
+    def _call_2_select_topic_with_audience_matrix(self, calendar_facts: Dict[str, Any],
                                                     search_results: List[Dict[str, str]],
                                                     user_feedback: Optional[str] = None) -> ResearchResult:
         """
@@ -250,19 +338,20 @@ Rules:
         """
         current_date = datetime.now()
         current_date_str = current_date.strftime("%B %d, %Y")
-        
+
         # Extract trending queries from search results
         trending_queries = []
         for result in search_results:
             for article in result['articles'][:5]:
                 trending_queries.append(article['title'])
-        
+
         # Production lag filter: reject counseling deadlines < 4 days away
+        # Upper bound: 25 days max (optimal window 4-25 days)
         counseling_deadlines = calendar_facts.get('counseling_deadlines', [])
-        valid_counseling = [d for d in counseling_deadlines if d.get('days_from_today', 0) >= 4]
-        
+        valid_counseling = [d for d in counseling_deadlines if 4 <= d.get('days_from_today', 0) <= 25]
+
         production_lag_days = 4  # 3-5 day production lag, use 4 as minimum
-        
+
         prompt = f"""You are the Researcher for @YatharthSachdeva23 (Bhaiya mentor for JEE aspirants).
 
 CHANNEL CONSTRAINTS:
@@ -273,7 +362,7 @@ CHANNEL CONSTRAINTS:
 
 CALENDAR FACTS (from live search):
 Active Counseling Cycle: {calendar_facts.get('active_counseling_cycle', 'None')}
-Counseling Deadlines (>= 4 days from today): {json.dumps(valid_counseling, indent=2)}
+Counseling Deadlines (4-25 days from today): {json.dumps(valid_counseling, indent=2)}
 Target Exam (12th/Droppers): {calendar_facts.get('target_exam_12th_droppers', 'JEE Main 2027 Session 1 - January 2027')}
 Target Exam (11th Grade): {calendar_facts.get('target_exam_11th', 'JEE Main 2028 - January 2028')}
 
@@ -302,7 +391,7 @@ Return ONLY valid JSON matching ResearchResult schema:
   "seasonal_relevance": "How this fits August 2026 timing",
   "competitor_gaps": "What others miss that we cover"
 }}"""
-        
+
         try:
             response_text = self._call_gemini(prompt, self.system_prompt)
             # response_text is already extracted JSON from _call_gemini
@@ -322,11 +411,11 @@ Return ONLY valid JSON matching ResearchResult schema:
                 return self._fallback_topic("counseling", calendar_facts)
             else:
                 return self._fallback_topic("12th_droppers", calendar_facts)
-    
+
     def _fallback_topic(self, segment: str, calendar_facts: Dict[str, Any]) -> ResearchResult:
         """Deterministic fallback topic based on segment."""
         current_date = datetime.now()
-        
+
         if segment == "counseling":
             active = calendar_facts.get('active_counseling_cycle', 'JAC Delhi & CSAB Spot Round')
             return ResearchResult(
@@ -361,12 +450,12 @@ Return ONLY valid JSON matching ResearchResult schema:
                 seasonal_relevance="August = 20 months to JEE 2028, perfect foundation-building window",
                 competitor_gaps="Others overcomplicate; we give simple subject-wise weekly plan for 20 months"
             )
-    
-    def execute(self, run: PipelineRun, user_feedback: Optional[str] = None, 
+
+    def execute(self, run: PipelineRun, user_feedback: Optional[str] = None,
                 yt_rep_demands: Optional[List[str]] = None) -> ResearchResult:
         """Execute the 2-Call Autonomous Pipeline."""
         print(f"\n[RESEARCHER] Starting 2-CALL AUTONOMOUS PIPELINE for run {run.run_id}")
-        
+
         # Build feedback context
         feedback_parts = []
         if user_feedback:
@@ -374,37 +463,37 @@ Return ONLY valid JSON matching ResearchResult schema:
         if yt_rep_demands:
             feedback_parts.append(f"AUDIENCE: {json.dumps(yt_rep_demands)}")
         combined_feedback = " | ".join(feedback_parts) if feedback_parts else None
-        
+
         # LIVE SEARCH
         print("[RESEARCHER] Step 1: Live Google News RSS searches...")
         search_results = self._perform_live_searches()
-        
+
         if not search_results:
             raise Exception("No live search results")
-        
+
         # CALL 1: CALENDAR FACT EXTRACTION
         print("[RESEARCHER] Step 2: Call 1 - Calendar Fact Extraction (Gemini 3.5 Flash)...")
         calendar_facts = self._call_1_extract_calendar_facts(search_results)
         print(f"[RESEARCHER]   Active Cycle: {calendar_facts.get('active_counseling_cycle')}")
         print(f"[RESEARCHER]   12th/Dropper Target: {calendar_facts.get('target_exam_12th_droppers')}")
         print(f"[RESEARCHER]   11th Target: {calendar_facts.get('target_exam_11th')}")
-        
+
         # CALL 2: TOPIC SELECTION WITH AUDIENCE MATRIX
         print("[RESEARCHER] Step 3: Call 2 - Topic Selection & Audience Matrix (Gemini 3.5 Flash)...")
         result = self._call_2_select_topic_with_audience_matrix(calendar_facts, search_results, combined_feedback)
-        
+
         # Save artifact
         db.save_artifact(run.run_id, "research", "result", result.__dict__)
         db.save_artifact(run.run_id, "research", "calendar_facts", calendar_facts)
-        
+
         # Update run
         run.research = result
         run.current_stage = PipelineStage.PLAN
         db.update_run(run)
-        
+
         print(f"[RESEARCHER] Selected Topic [{result.target_audience}]: {result.selected_topic}")
         return result
-    
+
     def execute_from_feedback(self, run: PipelineRun) -> ResearchResult:
         """Execute research using feedback from YT Representative (routed to researcher)."""
         feedback_items = db.get_feedback_for_researcher(run.run_id)
@@ -417,6 +506,6 @@ def run_researcher(run_id: str, user_feedback: Optional[str] = None) -> Research
     run = db.get_run(run_id)
     if not run:
         raise ValueError(f"Run {run_id} not found")
-    
+
     agent = ResearcherAgent()
     return agent.execute(run, user_feedback=user_feedback)

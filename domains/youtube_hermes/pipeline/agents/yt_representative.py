@@ -18,7 +18,7 @@ class YTRepresentativeAgent:
     """Subagent 10: Manages comments and extracts feedback."""
     
     def __init__(self):
-        self.llm = get_nvidia_client()
+        self.llm = get_nvidia_client(agent_name="yt_representative")
         self.system_prompt = get_system_prompt("yt_representative")
         self.browser = comment_manager_browser
     

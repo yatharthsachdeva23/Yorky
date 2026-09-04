@@ -18,7 +18,7 @@ class YTAnalyserAgent:
     """Subagent 11: Weekly channel growth audit."""
     
     def __init__(self):
-        self.llm = get_nvidia_client()
+        self.llm = get_nvidia_client(agent_name="yt_analyser")
         self.system_prompt = get_system_prompt("yt_analyser")
         self.browser = channel_analyser_browser
     

@@ -18,7 +18,7 @@ class ScriptReviewerAgent:
     THRESHOLD = 0.75
     
     def __init__(self):
-        self.llm = get_nvidia_client()
+        self.llm = get_nvidia_client(agent_name="script_reviewer")
         self.system_prompt = get_system_prompt("script_reviewer")
     
     def execute(self, run: PipelineRun, script: VideoScript) -> ReviewResult:
