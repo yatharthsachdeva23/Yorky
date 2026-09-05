@@ -134,9 +134,9 @@ def extract_shorts_list(ws):
             const dateEl = r.querySelector('.tablecell-date, [class*="date"]');
             const durationEl = r.querySelector('.duration, [class*="duration"]');
             const href = titleEl ? titleEl.getAttribute('href') : '';
-            const vidMatch = href ? href.match(/video\\/([^\\/]+)/) : null;
+            const vidMatch = href ? href.match(/video\\/([^\/]+)/) : null;
             const videoId = vidMatch ? vidMatch[1] : '';
-            
+
             return {
                 index: idx + 1,
                 video_id: videoId,
@@ -149,9 +149,156 @@ def extract_shorts_list(ws):
     """
     return evaluate_js(ws, script, req_id=100) or []
 
+
+def extract_short(ws, video_id):
+    """
+    Unified extraction: all 4 analytics tabs + comments + metadata in one WebSocket session.
+    Returns complete raw data for a single short.
+    """
+    result = {
+        "video_id": video_id,
+        "analytics": {},
+        "comments": [],
+        "metadata": {}
+    }
+    
+    # 1. Extract all 4 analytics tabs
+    tab_names = ["overview", "reach", "engagement", "audience"]
+    for tab_name in tab_names:
+        tab_url = f"https://studio.youtube.com/video/{video_id}/analytics/tab-{tab_name}/period-default"
+        
+        # Navigate
+        nav_script = f"""
+        (() => {{
+            window.location.href = '{tab_url}';
+            return {{navigated: true}};
+        }})()
+        """
+        evaluate_js(ws, nav_script, req_id=1000)
+        time.sleep(2.5)
+        
+        # Click tab to activate
+        click_script = f"""
+        (() => {{
+            const tabs = document.querySelectorAll('[role="tab"], tp-yt-paper-tab');
+            for (const tab of tabs) {{
+                const text = tab.textContent || tab.innerText || '';
+                if (text.toLowerCase().includes('{tab_name}')) {{
+                    tab.click();
+                    return {{clicked: true}};
+                }}
+            }}
+            return {{clicked: false}};
+        }})()
+        """
+        evaluate_js(ws, click_script, req_id=1010)
+        time.sleep(1.5)
+        
+        # Extract page text
+        text = evaluate_js(ws, "document.body.innerText", req_id=1020)
+        result["analytics"][tab_name] = text
+    
+    # 2. Extract comments
+    comments_url = f"https://studio.youtube.com/video/{video_id}/comments"
+    nav_script = f"""
+    (() => {{
+        window.location.href = '{comments_url}';
+        return {{navigated: true}};
+    }})()
+    """
+    evaluate_js(ws, nav_script, req_id=1100)
+    time.sleep(2)
+    
+    # Remove Unresponded filter
+    filter_script = """
+    (() => {
+        const chips = document.querySelectorAll('ytcp-chip-bar ytcp-chip, .filter-chip, [role="button"]');
+        for (const chip of chips) {
+            const text = (chip.innerText || chip.textContent || '').toLowerCase();
+            if (text.includes('unresponded') || text.includes('response status')) {
+                const closeBtn = chip.querySelector('button[aria-label*="remove"], button[aria-label*="close"], button[aria-label*="delete"], .close-button, .remove-button, ytcp-icon-button');
+                if (closeBtn) { closeBtn.click(); return {clicked: true}; }
+                chip.click(); return {clicked: true};
+            }
+        }
+        return {clicked: false};
+    })()
+    """
+    evaluate_js(ws, filter_script, req_id=1110)
+    time.sleep(1)
+    
+    # Scroll and extract comments (reuse existing logic)
+    comments_map = {}
+    for step in range(30):
+        scroll_amount = 500 if step < 10 else 300
+        scroll_script = f"""
+        (() => {{
+            const container = document.querySelector('ytcp-activity-section');
+            if (!container) return {{status: 'no_container'}};
+            
+            const prevTop = container.scrollTop;
+            container.scrollTop += {scroll_amount};
+            const isBottom = (container.scrollTop + container.clientHeight >= container.scrollHeight - 50);
+            
+            const threads = Array.from(document.querySelectorAll('ytcp-comment-thread'));
+            const extracted = threads.map(t => {{
+                const authorEl = t.querySelector('#author-text, .author-text');
+                const contentEl = t.querySelector('#content-text, .content-text');
+                const dateEl = t.querySelector('#published-time-text, .published-time-text');
+                const replyCountEl = t.querySelector('#reply-count, .reply-count');
+                const cid = t.getAttribute('id') || (authorEl ? authorEl.textContent.trim() : '') + (contentEl ? contentEl.textContent.trim() : '');
+                
+                return {{
+                    id: cid,
+                    author: authorEl ? authorEl.textContent.trim() : '',
+                    text: contentEl ? contentEl.textContent.trim() : '',
+                    date: dateEl ? dateEl.textContent.trim() : '',
+                    reply_count: replyCountEl ? replyCountEl.textContent.trim() : '0'
+                }};
+            }}).filter(c => c.text);
+            
+            return {{
+                prevTop: prevTop,
+                newTop: container.scrollTop,
+                isBottom: isBottom,
+                comments: extracted
+            }};
+        }})()
+        """
+        res = evaluate_js(ws, scroll_script, req_id=1120 + step)
+        if not res or res.get('status') == 'no_container':
+            break
+            
+        for c in res.get('comments', []):
+            if c['id'] and c['id'] not in comments_map:
+                comments_map[c['id']] = c
+                
+        if res.get('isBottom'):
+            break
+        time.sleep(0.3)
+    
+    result["comments"] = list(comments_map.values())
+    
+    # 3. Extract metadata from edit page
+    edit_url = f"https://studio.youtube.com/video/{video_id}/edit"
+    nav_script = f"""
+    (() => {{
+        window.location.href = '{edit_url}';
+        return {{navigated: true}};
+    }})()
+    """
+    evaluate_js(ws, nav_script, req_id=1200)
+    time.sleep(3)
+    
+    edit_text = evaluate_js(ws, "document.body.innerText", req_id=1210)
+    result["metadata"]["edit_page_text"] = edit_text
+    
+    return result
+
 def main():
     parser = argparse.ArgumentParser(description="YouTube Studio CDP Automation Helper")
-    parser.add_argument("--mode", choices=["comments", "shorts_list", "target"], required=True, help="Automation task mode")
+    parser.add_argument("--mode", choices=["comments", "shorts_list", "target", "extract_short"], required=True, help="Automation task mode")
+    parser.add_argument("--video-id", help="YouTube video ID (required for extract_short)")
     parser.add_argument("--out", help="Optional output JSON file path")
     args = parser.parse_args()
 
@@ -164,12 +311,16 @@ def main():
         print(json.dumps(target, indent=2))
         return
 
+    if args.mode == "extract_short" and not args.video_id:
+        print("ERROR: --video-id required for extract_short mode", file=sys.stderr)
+        sys.exit(1)
+
     ws_url = target.get("webSocketDebuggerUrl")
     if not ws_url:
         print("ERROR: Target has no webSocketDebuggerUrl", file=sys.stderr)
         sys.exit(1)
 
-    ws = websocket.create_connection(ws_url, timeout=10)
+    ws = websocket.create_connection(ws_url, timeout=10, suppress_origin=True)
     try:
         if args.mode == "comments":
             data = scroll_virtualized_comments(ws)
@@ -177,6 +328,9 @@ def main():
         elif args.mode == "shorts_list":
             data = extract_shorts_list(ws)
             print(f"Extracted {len(data)} visible Shorts rows.", file=sys.stderr)
+        elif args.mode == "extract_short":
+            data = extract_short(ws, args.video_id)
+            print(f"Extracted complete data for {args.video_id}", file=sys.stderr)
 
         output_json = json.dumps(data, indent=2, ensure_ascii=False)
         if args.out:
