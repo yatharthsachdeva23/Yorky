@@ -175,24 +175,34 @@ def extract_short(ws, video_id):
         }})()
         """
         evaluate_js(ws, nav_script, req_id=1000)
-        time.sleep(2.5)
+        time.sleep(4)  # Wait longer for full page load
         
-        # Click tab to activate
+        # Click tab to activate (tab name matching)
+        tab_display = tab_name.capitalize()
+        if tab_name == "overview":
+            tab_display = "Overview"
+        elif tab_name == "reach":
+            tab_display = "Reach"
+        elif tab_name == "engagement":
+            tab_display = "Engagement"
+        elif tab_name == "audience":
+            tab_display = "Audience"
+        
         click_script = f"""
         (() => {{
             const tabs = document.querySelectorAll('[role="tab"], tp-yt-paper-tab');
             for (const tab of tabs) {{
                 const text = tab.textContent || tab.innerText || '';
-                if (text.toLowerCase().includes('{tab_name}')) {{
+                if (text.trim().toLowerCase() === '{tab_display.lower()}') {{
                     tab.click();
-                    return {{clicked: true}};
+                    return {{clicked: true, text: text.trim()}};
                 }}
             }}
             return {{clicked: false}};
         }})()
         """
         evaluate_js(ws, click_script, req_id=1010)
-        time.sleep(1.5)
+        time.sleep(3)  # Wait for tab content to render
         
         # Extract page text
         text = evaluate_js(ws, "document.body.innerText", req_id=1020)
@@ -207,7 +217,7 @@ def extract_short(ws, video_id):
     }})()
     """
     evaluate_js(ws, nav_script, req_id=1100)
-    time.sleep(2)
+    time.sleep(3)
     
     # Remove Unresponded filter
     filter_script = """
@@ -225,7 +235,7 @@ def extract_short(ws, video_id):
     })()
     """
     evaluate_js(ws, filter_script, req_id=1110)
-    time.sleep(1)
+    time.sleep(1.5)
     
     # Scroll and extract comments (reuse existing logic)
     comments_map = {}
@@ -275,7 +285,7 @@ def extract_short(ws, video_id):
                 
         if res.get('isBottom'):
             break
-        time.sleep(0.3)
+        time.sleep(0.4)
     
     result["comments"] = list(comments_map.values())
     
@@ -288,7 +298,7 @@ def extract_short(ws, video_id):
     }})()
     """
     evaluate_js(ws, nav_script, req_id=1200)
-    time.sleep(3)
+    time.sleep(4)
     
     edit_text = evaluate_js(ws, "document.body.innerText", req_id=1210)
     result["metadata"]["edit_page_text"] = edit_text
