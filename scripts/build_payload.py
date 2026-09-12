@@ -90,29 +90,73 @@ def parse_overview(overview_text: str) -> dict:
     return metrics, duration_seconds
 
 def parse_reach(reach_text: str, total_views: int) -> list:
-    """Extract traffic sources from Reach tab."""
+    """Extract traffic sources from Reach tab text."""
     sources = []
-    # Default distribution for Shorts
-    defaults = [
-        ('Shorts feed', 'feed', 0.9),
-        ('YouTube search', 'search', 0.05),
-        ('Browse features', 'browse', 0.02),
-        ('Channel pages', 'channel', 0.01),
-        ('External', 'external', 0.01),
-        ('Other YouTube features', 'other', 0.01),
+    
+    # Try to parse actual traffic source data from the text
+    # Studio Reach tab typically shows: source_name, views, percentage
+    # Pattern: "Shorts feed\n1,234\n90.5%"
+    lines = reach_text.split('\n')
+    
+    # Known source categories in order of typical appearance
+    source_patterns = [
+        ('Shorts feed', 'feed'),
+        ('YouTube search', 'search'),
+        ('Browse features', 'browse'),
+        ('Channel pages', 'channel'),
+        ('External', 'external'),
+        ('Suggested videos', 'other'),
+        ('Playlists', 'other'),
+        ('Notifications', 'other'),
+        ('Other YouTube features', 'other'),
+        ('Hashtag pages', 'other'),
+        ('Video cards and annotations', 'other'),
+        ('Others', 'other'),
     ]
     
-    for name, category, pct in defaults:
-        views = max(1, round(total_views * pct))
-        sources.append({
-            'source_name': name,
-            'source_category': category,
-            'views': views,
-            'percentage': round(pct * 100, 1),
-            'avg_view_duration_seconds': None,
-            'retention_pct': None,
-        })
-    return sources
+    parsed_sources = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        for src_name, src_cat in source_patterns:
+            if line == src_name or line.lower().startswith(src_name.lower()):
+                # Try to get views and percentage from next lines
+                views = None
+                pct = None
+                # Look ahead for numeric values
+                for j in range(i+1, min(i+5, len(lines))):
+                    next_line = lines[j].strip().replace(',', '')
+                    # Match view count (could be "1.2K" or "1,234")
+                    if re.match(r'^[\d,.]+[KM]?$', next_line):
+                        views_str = next_line.replace(',', '')
+                        if 'K' in views_str:
+                            views = int(float(views_str.replace('K', '')) * 1000)
+                        elif 'M' in views_str:
+                            views = int(float(views_str.replace('M', '')) * 1000000)
+                        else:
+                            views = int(float(views_str))
+                    # Match percentage
+                    elif re.match(r'^[\d.]+%$', next_line):
+                        pct = float(next_line.replace('%', ''))
+                if views is not None and pct is not None:
+                    parsed_sources.append({
+                        'source_name': src_name,
+                        'source_category': src_cat,
+                        'views': max(1, views),
+                        'percentage': round(pct, 1),
+                        'avg_view_duration_seconds': None,
+                        'retention_pct': None,
+                    })
+                break
+        i += 1
+    
+    # If we couldn't parse any sources, raise error instead of using defaults
+    if not parsed_sources:
+        # Try to extract from Overview text as fallback
+        print("WARNING: Could not parse traffic sources from Reach tab text. Data may be incomplete.")
+        return []
+    
+    return parsed_sources
 
 def parse_search_terms(overview_text: str, total_views: int) -> list:
     """Extract search terms from Overview/Reach."""
@@ -148,34 +192,179 @@ def parse_retention_curve(overview_text: str, duration_seconds: int, final_reten
     ]
 
 def parse_audience_overview(audience_text: str) -> dict:
-    """Extract audience demographics from Audience tab."""
-    # Default reasonable values
-    return {
+    """Extract audience demographics from Audience tab text."""
+    result = {
         'device': {
-            'mobile_pct': 94.5, 'desktop_pct': 4.0, 'tv_pct': 0.8, 'tablet_pct': 0.7,
+            'mobile_pct': 0.0, 'desktop_pct': 0.0, 'tv_pct': 0.0, 'tablet_pct': 0.0,
             'mobile_views': 0, 'desktop_views': 0, 'tv_views': 0, 'tablet_views': 0,
             'desktop_intent_proxy': 0.0,
         },
-        'gender': {'male_pct': 65.0, 'female_pct': 35.0, 'unknown_pct': 0.0, 'has_data': True},
+        'gender': {'male_pct': 0.0, 'female_pct': 0.0, 'unknown_pct': 0.0, 'has_data': False},
         'age': {
-            'age_13_17_pct': 20.0, 'age_18_24_pct': 55.0, 'age_25_34_pct': 15.0,
-            'age_35_44_pct': 5.0, 'age_45_54_pct': 3.0, 'age_55_64_pct': 1.0, 'age_65_plus_pct': 1.0,
-            'target_audience_pct': 70.0, 'non_target_pct': 30.0, 'has_data': True,
+            'age_13_17_pct': 0.0, 'age_18_24_pct': 0.0, 'age_25_34_pct': 0.0,
+            'age_35_44_pct': 0.0, 'age_45_54_pct': 0.0, 'age_55_64_pct': 0.0, 'age_65_plus_pct': 0.0,
+            'target_audience_pct': 0.0, 'non_target_pct': 0.0, 'has_data': False,
         },
-        'geography': [
-            {'country_code': 'IN', 'country_name': 'India', 'views': 0, 'percentage': 93.5, 'avg_view_duration_seconds': None, 'is_target_country': True},
-            {'country_code': 'US', 'country_name': 'United States', 'views': 0, 'percentage': 2.0, 'avg_view_duration_seconds': None, 'is_target_country': False},
-            {'country_code': 'PK', 'country_name': 'Pakistan', 'views': 0, 'percentage': 1.5, 'avg_view_duration_seconds': None, 'is_target_country': False},
-            {'country_code': 'BD', 'country_name': 'Bangladesh', 'views': 0, 'percentage': 1.0, 'avg_view_duration_seconds': None, 'is_target_country': False},
-            {'country_code': 'NP', 'country_name': 'Nepal', 'views': 0, 'percentage': 1.0, 'avg_view_duration_seconds': None, 'is_target_country': False},
-        ],
+        'geography': [],
         'subscriber_status': {
-            'subscribed_pct': 25.0, 'not_subscribed_pct': 75.0,
+            'subscribed_pct': 0.0, 'not_subscribed_pct': 0.0,
             'subscribed_views': 0, 'not_subscribed_views': 0,
             'sub_viewer_retention_pct': 0.0, 'non_sub_viewer_retention_pct': 0.0,
         },
-        'subtitles': {'none_pct': 70.0, 'hindi_pct': 20.0, 'english_pct': 8.0, 'other_pct': 2.0, 'has_cc_data': True},
+        'subtitles': {'none_pct': 0.0, 'hindi_pct': 0.0, 'english_pct': 0.0, 'other_pct': 0.0, 'has_cc_data': False},
     }
+    
+    lines = audience_text.split('\n')
+    
+    # Parse device breakdown
+    # Pattern: "Mobile\n94.5%\n1,234 views"
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        if line_stripped in ['Mobile', 'Desktop', 'TV', 'Tablet']:
+            device_key = line_stripped.lower()
+            if device_key == 'tv':
+                device_key = 'tv'
+            # Look for percentage and views in next lines
+            for j in range(i+1, min(i+5, len(lines))):
+                next_line = lines[j].strip()
+                # Match percentage
+                if re.match(r'^[\d.]+?%$', next_line):
+                    pct = float(next_line.replace('%', ''))
+                    if device_key in result['device']:
+                        result['device'][f'{device_key}_pct'] = pct
+                # Match views
+                elif re.match(r'^[\d,.]+[KM]?$', next_line.replace(',', '')):
+                    views_str = next_line.replace(',', '')
+                    if 'K' in views_str:
+                        views = int(float(views_str.replace('K', '')) * 1000)
+                    elif 'M' in views_str:
+                        views = int(float(views_str.replace('M', '')) * 1000000)
+                    else:
+                        views = int(float(views_str.replace(',', '')))
+                    if device_key in result['device']:
+                        result['device'][f'{device_key}_views'] = views
+    
+    # Parse gender
+    for i, line in enumerate(lines):
+        if line.strip() in ['Male', 'Female', 'Unknown']:
+            gender_key = line.strip().lower() + '_pct'
+            for j in range(i+1, min(i+3, len(lines))):
+                next_line = lines[j].strip()
+                if re.match(r'^[\d.]+?%$', next_line):
+                    pct = float(next_line.replace('%', ''))
+                    if gender_key in result['gender']:
+                        result['gender'][gender_key] = pct
+    
+    if result['gender']['male_pct'] > 0 or result['gender']['female_pct'] > 0:
+        result['gender']['has_data'] = True
+    
+    # Parse age groups
+    age_patterns = {
+        '13-17': 'age_13_17_pct',
+        '18-24': 'age_18_24_pct',
+        '25-34': 'age_25_34_pct',
+        '35-44': 'age_35_44_pct',
+        '45-54': 'age_45_54_pct',
+        '55-64': 'age_55_64_pct',
+        '65+': 'age_65_plus_pct',
+    }
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        for age_label, age_key in age_patterns.items():
+            if line_stripped == age_label or line_stripped.startswith(age_label):
+                for j in range(i+1, min(i+3, len(lines))):
+                    next_line = lines[j].strip()
+                    if re.match(r'^[\d.]+?%$', next_line):
+                        pct = float(next_line.replace('%', ''))
+                        result['age'][age_key] = pct
+    
+    if any(result['age'][k] > 0 for k in age_patterns.values()):
+        result['age']['has_data'] = True
+    
+    # Parse geography - look for country codes and percentages
+    # Pattern: "India\n93.5%\n1,234 views"
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        # Check for known countries
+        country_map = {
+            'India': 'IN', 'United States': 'US', 'Pakistan': 'PK',
+            'Bangladesh': 'BD', 'Nepal': 'NP', 'United Kingdom': 'GB',
+            'Canada': 'CA', 'Australia': 'AU', 'Germany': 'DE', 'France': 'FR',
+        }
+        for country_name, country_code in country_map.items():
+            if line_stripped == country_name or line_stripped.startswith(country_name):
+                for j in range(i+1, min(i+5, len(lines))):
+                    next_line = lines[j].strip()
+                    if re.match(r'^[\d.]+?%$', next_line):
+                        pct = float(next_line.replace('%', ''))
+                        # Look for views
+                        views = 0
+                        for k in range(j+1, min(j+3, len(lines))):
+                            if re.match(r'^[\d,.]+[KM]?$', lines[k].strip().replace(',', '')):
+                                v_str = lines[k].strip().replace(',', '')
+                                if 'K' in v_str:
+                                    views = int(float(v_str.replace('K', '')) * 1000)
+                                elif 'M' in v_str:
+                                    views = int(float(v_str.replace('M', '')) * 1000000)
+                                else:
+                                    views = int(float(v_str.replace(',', '')))
+                                break
+                        result['geography'].append({
+                            'country_code': country_code,
+                            'country_name': country_name,
+                            'views': views,
+                            'percentage': pct,
+                            'avg_view_duration_seconds': None,
+                            'is_target_country': country_code == 'IN',
+                        })
+                        break
+    
+    # Parse subscriber status
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        if line_stripped in ['Subscribed', 'Not subscribed']:
+            for j in range(i+1, min(i+5, len(lines))):
+                next_line = lines[j].strip()
+                if re.match(r'^[\d.]+?%$', next_line):
+                    pct = float(next_line.replace('%', ''))
+                    if line_stripped == 'Subscribed':
+                        result['subscriber_status']['subscribed_pct'] = pct
+                    else:
+                        result['subscriber_status']['not_subscribed_pct'] = pct
+                elif re.match(r'^[\d,.]+[KM]?$', next_line.replace(',', '')):
+                    views_str = next_line.replace(',', '')
+                    if 'K' in views_str:
+                        views = int(float(views_str.replace('K', '')) * 1000)
+                    elif 'M' in views_str:
+                        views = int(float(views_str.replace('M', '')) * 1000000)
+                    else:
+                        views = int(float(views_str.replace(',', '')))
+                    if line_stripped == 'Subscribed':
+                        result['subscriber_status']['subscribed_views'] = views
+                    else:
+                        result['subscriber_status']['not_subscribed_views'] = views
+    
+    # Parse subtitles/CC
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        if line_stripped in ['None', 'Hindi', 'English', 'Other']:
+            for j in range(i+1, min(i+3, len(lines))):
+                next_line = lines[j].strip()
+                if re.match(r'^[\d.]+?%$', next_line):
+                    pct = float(next_line.replace('%', ''))
+                    key = line_stripped.lower() + '_pct'
+                    if key in result['subtitles']:
+                        result['subtitles'][key] = pct
+    
+    if any(result['subtitles'][k] > 0 for k in ['none_pct', 'hindi_pct', 'english_pct', 'other_pct']):
+        result['subtitles']['has_cc_data'] = True
+    
+    # If we couldn't extract meaningful data, warn
+    if (result['device']['mobile_pct'] == 0 and result['gender']['male_pct'] == 0 
+        and not result['geography'] and result['subscriber_status']['subscribed_pct'] == 0):
+        print("WARNING: Could not parse meaningful audience data from Audience tab text.")
+    
+    return result
 
 def parse_comments(comments_list: list) -> tuple:
     """Process comments into comments_analysis + individual_comments."""
@@ -278,21 +467,25 @@ def build_payload(short_id: int, video_id: str, extracted: dict) -> dict:
     comments = extracted.get('comments', [])
     metadata = extracted.get('metadata', {}).get('edit_page_text', '')
     
-    # Title from edit page
+    # Title precedence: structured field first, then parse from edit page
     title = ''
-    for line in metadata.split('\n'):
-        if 'Title (required)' in line:
-            idx = metadata.split('\n').index(line)
-            if idx + 1 < len(metadata.split('\n')):
-                title = metadata.split('\n')[idx + 1].strip()
-                break
-    
-    # Fallback: first line with emoji
-    if not title:
+    if extracted.get('metadata', {}).get('title'):
+        title = extracted['metadata']['title'].strip()
+    else:
+        # Parse from edit page text
         for line in metadata.split('\n'):
-            if line.strip().startswith('🔴') or line.strip().startswith('🚨'):
-                title = line.strip()
-                break
+            if 'Title (required)' in line:
+                idx = metadata.split('\n').index(line)
+                if idx + 1 < len(metadata.split('\n')):
+                    title = metadata.split('\n')[idx + 1].strip()
+                    break
+        
+        # Fallback: first line with emoji
+        if not title:
+            for line in metadata.split('\n'):
+                if line.strip().startswith('🔴') or line.strip().startswith('🚨'):
+                    title = line.strip()
+                    break
     
     if not title:
         title = f"Short {short_id}"
