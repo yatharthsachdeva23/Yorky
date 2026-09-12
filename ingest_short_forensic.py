@@ -313,7 +313,7 @@ def ingest_short(data: dict):
                     ic.get("intent_category"), ic.get("query_subtype"), ic.get("is_actionable", False), ic.get("has_contact_info", False)
                 ))
 
-        # 10. SHORT TITLE TEMPLATE
+        # 10. SHORT TITLE TEMPLATE - defensive type coercion
         stt = data.get("short_title_template", {})
         if stt:
             cur.execute("""
@@ -327,8 +327,15 @@ def ingest_short(data: dict):
                     char_after_pipe = EXCLUDED.char_after_pipe, keyword_density = EXCLUDED.keyword_density,
                     fetched_at = CURRENT_TIMESTAMP;
             """, (
-                video_id, stt.get("template_id"), stt.get("title_length"), stt.get("word_count"), stt.get("hashtag_count"),
-                stt.get("emoji_count"), stt.get("char_before_pipe"), stt.get("char_after_pipe"), Json(stt.get("keyword_density", {}))
+                video_id,
+                int(stt.get("template_id", 0)) if stt.get("template_id") is not None else 0,
+                int(stt.get("title_length", 0)) if stt.get("title_length") is not None else 0,
+                int(stt.get("word_count", 0)) if stt.get("word_count") is not None else 0,
+                int(stt.get("hashtag_count", 0)) if stt.get("hashtag_count") is not None else 0,
+                int(stt.get("emoji_count", 0)) if stt.get("emoji_count") is not None else 0,
+                int(stt.get("char_before_pipe", 0)) if stt.get("char_before_pipe") is not None else 0,
+                int(stt.get("char_after_pipe", 0)) if stt.get("char_after_pipe") is not None else 0,
+                Json(stt.get("keyword_density", {}))
             ))
 
         # 11. END SCREEN PERFORMANCE
