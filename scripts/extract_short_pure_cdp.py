@@ -47,6 +47,61 @@ def cleanup_orphan_blank_tabs():
     except Exception:
         pass
 
+def create_background_target(init_url: str):
+    """
+    Creates a target tab strictly in the background (background=True)
+    via Browser WebSocket, and minimizes the Chrome window so that
+    it NEVER steals focus or pops up in front of the user's active work.
+    """
+    try:
+        req = urllib.request.Request(f"{CDP_BASE}/json/version")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            ver = json.load(r)
+        browser_ws_url = ver.get("webSocketDebuggerUrl")
+        if browser_ws_url:
+            ws_b = websocket.create_connection(browser_ws_url, timeout=10, suppress_origin=True)
+            # Create target with background=True (prevents tab focus)
+            ws_b.send(json.dumps({
+                "id": 1,
+                "method": "Target.createTarget",
+                "params": {"url": init_url, "background": True}
+            }))
+            res = json.loads(ws_b.recv())
+            tid = res.get("result", {}).get("targetId")
+            
+            if tid:
+                # Keep Chrome minimized on taskbar so it NEVER pops in front of other apps
+                try:
+                    ws_b.send(json.dumps({
+                        "id": 2,
+                        "method": "Browser.getWindowForTarget",
+                        "params": {"targetId": tid}
+                    }))
+                    res_w = json.loads(ws_b.recv())
+                    wid = res_w.get("result", {}).get("windowId")
+                    if wid:
+                        ws_b.send(json.dumps({
+                            "id": 3,
+                            "method": "Browser.setWindowBounds",
+                            "params": {"windowId": wid, "bounds": {"windowState": "minimized"}}
+                        }))
+                        ws_b.recv()
+                except Exception:
+                    pass
+                
+                ws_b.close()
+                ws_url = f"ws://127.0.0.1:9222/devtools/page/{tid}"
+                return tid, ws_url
+            ws_b.close()
+    except Exception as e:
+        print(f"[-] Background target creation fallback: {e}")
+
+    # Fallback to HTTP API if browser endpoint is unavailable
+    req = urllib.request.Request(f"{CDP_BASE}/json/new?{init_url}", method="PUT")
+    with urllib.request.urlopen(req, timeout=10) as r:
+        target = json.load(r)
+    return target["id"], target["webSocketDebuggerUrl"]
+
 def cdp_send(ws, method, params=None, req_id=1):
     ws.send(json.dumps({"id": req_id, "method": method, "params": params or {}}))
     while True:
@@ -124,15 +179,10 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
 
     print(f"[*] [Pure CDP] Opening isolated background target for Short #{short_id} ({video_id})...")
 
-    # 1. Create independent background target tab
+    # 1. Create independent background target tab (strictly background=True, window minimized)
     init_url = f"https://studio.youtube.com/video/{video_id}/analytics/tab-overview/period-default"
-    req = urllib.request.Request(f"{CDP_BASE}/json/new?{init_url}", method="PUT")
-    with urllib.request.urlopen(req, timeout=10) as r:
-        target = json.load(r)
-
-    tid = target["id"]
-    ws_url = target["webSocketDebuggerUrl"]
-    print(f"[+] Target created: {tid}")
+    tid, ws_url = create_background_target(init_url)
+    print(f"[+] Target created in background: {tid}")
 
     extracted_data = {
         "video_id": video_id,
