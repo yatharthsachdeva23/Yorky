@@ -35,7 +35,7 @@ class SubagentCompanionWindow:
     def __init__(self, parent_root, delegation_id, photo_img, char_w, char_h, scale_height=125):
         self.delegation_id = delegation_id
         self.scale_height = scale_height
-        self.canvas_width = int(self.scale_height * 1.15)
+        self.canvas_width = int(self.scale_height * 1.35)
         self.canvas_height = self.scale_height + 45
         self.photo = photo_img
         self.char_w = char_w
@@ -306,10 +306,19 @@ class YorkyDesktopPet:
     def update_subagent_positions(self):
         yorky_x = self.root.winfo_x()
         yorky_y = self.root.winfo_y()
+        screen_w = self.root.winfo_screenwidth()
+        spacing = 8
         for i, (did, win) in enumerate(self.subagent_windows.items()):
-            spacing = 10
             sub_x = yorky_x - (i + 1) * (win.canvas_width + spacing)
             sub_y = (yorky_y + self.canvas_height) - win.canvas_height
+            if sub_x < 10:
+                # If too far left, place to the right or wrap to second row
+                sub_x = yorky_x + self.canvas_width + spacing + i * (win.canvas_width + spacing)
+                if sub_x + win.canvas_width > screen_w - 10:
+                    col = i % 3
+                    row = (i // 3) + 1
+                    sub_x = max(10, yorky_x - (col + 1) * (win.canvas_width + spacing))
+                    sub_y = yorky_y - row * (win.canvas_height + 5)
             win.set_position(sub_x, sub_y)
 
     def sync_subagent_windows(self, active_subs):
@@ -325,6 +334,8 @@ class YorkyDesktopPet:
         # 2. Spawn or update windows for currently running subagents
         yorky_x = self.root.winfo_x()
         yorky_y = self.root.winfo_y()
+        screen_w = self.root.winfo_screenwidth()
+        spacing = 8
 
         for i, sdata in enumerate(active_subs):
             did = sdata["id"]
@@ -341,9 +352,15 @@ class YorkyDesktopPet:
             win = self.subagent_windows.get(did)
             if win:
                 win.update_activity(action)
-                spacing = 10
                 sub_x = yorky_x - (i + 1) * (win.canvas_width + spacing)
                 sub_y = (yorky_y + self.canvas_height) - win.canvas_height
+                if sub_x < 10:
+                    sub_x = yorky_x + self.canvas_width + spacing + i * (win.canvas_width + spacing)
+                    if sub_x + win.canvas_width > screen_w - 10:
+                        col = i % 3
+                        row = (i // 3) + 1
+                        sub_x = max(10, yorky_x - (col + 1) * (win.canvas_width + spacing))
+                        sub_y = yorky_y - row * (win.canvas_height + 5)
                 win.set_position(sub_x, sub_y)
 
     def create_context_menu(self):

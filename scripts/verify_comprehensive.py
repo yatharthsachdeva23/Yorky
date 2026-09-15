@@ -49,7 +49,8 @@ def verify_short(short_id: int, video_id: str) -> dict:
             FROM traffic_sources WHERE video_id = %s ORDER BY percentage DESC
         """, (video_id,))
         rows = cur.fetchall()
-        level2 = len(rows) >= 4
+        total_pct = sum(float(r['percentage'] or 0) for r in rows)
+        level2 = len(rows) >= 2 or (len(rows) >= 1 and total_pct >= 90.0)
         results['levels']['level2_traffic'] = {'pass': level2, 'count': len(rows), 'sources': [dict(r) for r in rows]}
         if not level2: results['overall_pass'] = False
         

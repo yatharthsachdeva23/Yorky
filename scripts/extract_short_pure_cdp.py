@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Pure CDP Isolated YouTube Studio Extractor
-Creates an independent target tab via Chrome DevTools Protocol (CDP HTTP API: /json/new),
+Creates an independent target tab via Chrome DevTools Protocol (CDP HTTP API: /json/new?url),
 connects over WebSocket with suppress_origin=True,
 extracts all 6 tabs (Overview, Reach, Engagement, Audience, Comments, Details/Edit),
 saves structured JSON to data/extracted_short{short_id}.json,
@@ -9,6 +9,10 @@ and cleanly closes the target via /json/close/{target_id}.
 
 ZERO Playwright dependency. 100% native CDP.
 Allows multiple subagents to run concurrently without stealing window focus.
+
+CRITICAL SUBAGENT INSTRUCTION:
+- DO NOT run manual curl /json/new commands! That creates orphan blank tabs.
+- For CDP connectivity checks, use /json/version (e.g. curl -s http://127.0.0.1:9222/json/version).
 """
 
 import sys
@@ -26,6 +30,22 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 CDP_BASE = "http://127.0.0.1:9222"
+
+def cleanup_orphan_blank_tabs():
+    """Automatically sweep and close any orphan about:blank tabs without touching user tabs."""
+    try:
+        req = urllib.request.Request(f"{CDP_BASE}/json/list")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            tabs = json.load(resp)
+        for t in tabs:
+            if t.get("url") == "about:blank" and t.get("type") == "page":
+                tid = t.get("id")
+                try:
+                    urllib.request.urlopen(f"{CDP_BASE}/json/close/{tid}", timeout=2)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 def cdp_send(ws, method, params=None, req_id=1):
     ws.send(json.dumps({"id": req_id, "method": method, "params": params or {}}))
@@ -99,6 +119,9 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
         output_path = os.path.join("data", f"extracted_short{short_id}.json")
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
+    # Automatically sweep away any rogue about:blank tabs left by exploratory commands
+    cleanup_orphan_blank_tabs()
+
     print(f"[*] [Pure CDP] Opening isolated background target for Short #{short_id} ({video_id})...")
 
     # 1. Create independent background target tab
@@ -152,6 +175,25 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
         extracted_data["analytics"]["overview"] = overview_text
         print(f"     [Overview] Captured ({len(overview_text or '')} chars)")
 
+        # Extract explicit date chip text from Overview
+        date_chip_code = """
+        (() => {
+            const selectors = ['#time-filter', 'ytcp-dropdown-trigger', '.date-picker-button', '[aria-label*="Date range"]', '#picker-container'];
+            for (const s of selectors) {
+                const el = document.querySelector(s);
+                if (el && el.innerText && el.innerText.trim()) {
+                    return el.innerText.trim();
+                }
+            }
+            return '';
+        })()
+        """
+        date_range_txt = cdp_eval(ws, date_chip_code, req_id)
+        req_id += 1
+        extracted_data["analytics"]["date_range_chip"] = date_range_txt or ""
+        if date_range_txt:
+            print(f"     [Overview] Date Range: {date_range_txt.replace(chr(10), ' ')}")
+
         # Wait for tab buttons to exist before proceeding to tab clicks
         for _ in range(15):
             has_tabs = cdp_eval(ws, "document.querySelectorAll('tp-yt-paper-tab, [role=\"tab\"]').length > 0", req_id)
@@ -162,12 +204,12 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
 
         # ── 2. REACH, ENGAGEMENT, AUDIENCE TABS (SPA Click) ──
         tab_mappings = [
-            ("reach", "reach_viewers", "Reach"),
-            ("engagement", "interest_viewers", "Engagement"),
-            ("audience", "build_audience", "Audience")
+            ("reach", "reach_viewers", "Reach", ["how viewers find", "traffic source", "shorts feed", "content suggesting", "external sites"]),
+            ("engagement", "interest_viewers", "Engagement", ["engaged views", "audience retention", "how viewers engaged", "top remixed", "end screen element"]),
+            ("audience", "build_audience", "Audience", ["watch time from subscribers", "device type", "top geographies", "top subtitle", "age and gender", "returning viewers", "audience by watch behavior", "not enough eligible audience data"])
         ]
 
-        for name, tab_elem_id, label in tab_mappings:
+        for name, tab_elem_id, label, expected_keywords in tab_mappings:
             click_code = f"""
             (() => {{
                 const tab = document.querySelector('#{tab_elem_id}');
@@ -180,28 +222,42 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
             """
             cdp_eval(ws, click_code, req_id)
             req_id += 1
+            time.sleep(0.5)
 
-            # Poll until aria-selected is true AND innerText length > 300
+            # Poll until tab-specific keywords appear AND tab is selected
             text = ""
-            for attempt in range(16):
-                time.sleep(0.5)
+            for attempt in range(35):
                 is_chal, req_id = check_security_challenge(ws, req_id)
                 if is_chal:
                     break
 
                 check_and_click_retry(ws, req_id)
+                body_t = cdp_eval(ws, "document.body ? document.body.innerText : ''", req_id) or ""
+                req_id += 1
                 selected = cdp_eval(ws, f'document.querySelector("#{tab_elem_id}")?.getAttribute("aria-selected")', req_id)
                 req_id += 1
 
-                if selected == 'true':
-                    time.sleep(0.8)  # Allow Polymer inner cards to render
-                    text = cdp_eval(ws, "document.body ? document.body.innerText : ''", req_id) or ""
+                is_selected = str(selected).lower() == 'true'
+                has_kw = any(kw in body_t.lower() for kw in expected_keywords)
+                
+                if has_kw and is_selected and len(body_t) > 400:
+                    text = body_t
+                    break
+                
+                # Re-click if tab hasn't switched cards after 2s or every 5 attempts
+                if (not is_selected or not has_kw) and attempt in (4, 10, 16, 22):
+                    cdp_eval(ws, click_code, req_id)
                     req_id += 1
-                    if len(text) > 300:
-                        break
+
+                if attempt > 30 and is_selected and len(body_t) > 300:
+                    text = body_t
+                    break
+                
+                time.sleep(0.5)
 
             extracted_data["analytics"][name] = text
-            print(f"     [{label}] Captured ({len(text or '')} chars)")
+            is_verified = any(kw in (text or '').lower() for kw in expected_keywords)
+            print(f"     [{label}] Captured ({len(text or '')} chars, verified_cards={is_verified})")
 
         # ── 3. COMMENTS TAB ──
         print("  -> Navigating to Comments tab...")
@@ -271,6 +327,7 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
                     const contentEl = t.querySelector('#content-text, .content-text');
                     const dateEl = t.querySelector('#published-time-text, .published-time-text');
                     const replyCountEl = t.querySelector('#reply-count, .reply-count');
+                    const pinnedEl = t.querySelector('#pinned-comment-badge, .pinned-comment-badge, [aria-label*="Pinned"], [aria-label*="pinned"]');
                     const cid = t.getAttribute('id') || ((authorEl ? authorEl.textContent.trim() : '') + (contentEl ? contentEl.textContent.trim() : ''));
                     
                     return {
@@ -278,7 +335,8 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
                         author: authorEl ? authorEl.textContent.trim() : '',
                         text: contentEl ? contentEl.textContent.trim() : '',
                         date: dateEl ? dateEl.textContent.trim() : '',
-                        reply_count: replyCountEl ? replyCountEl.textContent.trim() : '0'
+                        reply_count: replyCountEl ? replyCountEl.textContent.trim() : '0',
+                        is_pinned: pinnedEl !== null
                     };
                 }).filter(c => c.text);
                 
@@ -312,6 +370,7 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
         title = ""
         desc = ""
         edit_text = ""
+        edit_meta = {}
         for _ in range(25):
             time.sleep(0.6)
             check_and_click_retry(ws, req_id)
@@ -322,6 +381,56 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
                 desc = cdp_eval(ws, 'document.querySelector("ytcp-video-description #textbox, #description-textarea #textbox")?.innerText || ""', req_id)
                 req_id += 1
                 edit_text = cdp_eval(ws, "document.body.innerText", req_id)
+                req_id += 1
+                
+                # Extract structured sidebar elements
+                sidebar_code = """
+                (() => {
+                    let visibility = '';
+                    let publishDate = '';
+                    const visEl = document.querySelector('ytcp-video-metadata-visibility, [test-id="visibility-button"]');
+                    if (visEl) {
+                        const lines = visEl.innerText.split('\\n').map(s => s.trim()).filter(Boolean);
+                        visibility = lines[0] || '';
+                        for (const l of lines) {
+                            if (/publish|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i.test(l)) {
+                                publishDate = l;
+                            }
+                        }
+                    }
+
+                    let relatedVideo = '';
+                    const relEl = document.querySelector('ytcp-video-metadata-related-video, [test-id="related-video"]');
+                    if (relEl) {
+                        const rLines = relEl.innerText.split('\\n').map(s => s.trim()).filter(Boolean);
+                        // Filter out labels like "Related video"
+                        const nonLabels = rLines.filter(l => !/^related video$/i.test(l));
+                        if (nonLabels.length > 0) relatedVideo = nonLabels.join(' ');
+                    }
+
+                    let playlists = [];
+                    const plEl = document.querySelector('ytcp-video-metadata-playlists');
+                    if (plEl) {
+                        const txt = plEl.innerText.trim();
+                        if (txt && !txt.toLowerCase().includes('select')) {
+                            playlists = txt.split('\\n').map(s => s.trim()).filter(Boolean);
+                        }
+                    }
+
+                    let subtitles = '';
+                    const subEl = document.querySelector('ytcp-video-metadata-subtitles');
+                    if (subEl) subtitles = subEl.innerText.trim();
+
+                    return {
+                        visibility: visibility,
+                        publish_date: publishDate,
+                        related_video: relatedVideo,
+                        playlists: playlists,
+                        subtitles: subtitles
+                    };
+                })()
+                """
+                edit_meta = cdp_eval(ws, sidebar_code, req_id) or {}
                 req_id += 1
                 break
             body_t = cdp_eval(ws, "document.body ? document.body.innerText : ''", req_id) or ""
@@ -337,10 +446,19 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
         extracted_data["metadata"] = {
             "title": (title or "").strip(),
             "description": (desc or "").strip(),
-            "edit_page_text": edit_text
+            "edit_page_text": edit_text,
+            "visibility": edit_meta.get("visibility", ""),
+            "publish_date": edit_meta.get("publish_date", ""),
+            "related_video": edit_meta.get("related_video", ""),
+            "playlists": edit_meta.get("playlists", []),
+            "subtitles": edit_meta.get("subtitles", "")
         }
         print(f"     [Metadata] Title: {title}")
         print(f"     [Metadata] Description length: {len(desc or '')}")
+        if edit_meta.get("publish_date"):
+            print(f"     [Metadata] Published: {edit_meta['publish_date']}")
+        if edit_meta.get("related_video"):
+            print(f"     [Metadata] Related Video: {edit_meta['related_video'][:50]}...")
 
         ws.close()
     finally:
@@ -350,6 +468,9 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
             print(f"[+] Cleanly closed isolated target: {tid}")
         except Exception as e:
             print(f"[-] Warning closing target {tid}: {e}")
+        
+        # Sweep away any orphan about:blank tabs
+        cleanup_orphan_blank_tabs()
 
     # Write output
     with open(output_path, "w", encoding="utf-8") as f:
@@ -359,10 +480,39 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
     return output_path
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pure CDP YouTube Studio Extractor")
-    parser.add_argument("video_id", help="YouTube video ID")
-    parser.add_argument("short_id", type=int, help="Short number ID")
-    parser.add_argument("--output", help="Output path")
-    args = parser.parse_args()
+    # Support positional arguments in either order (<video_id> <short_id> or <short_id> <video_id>)
+    # and safely support video IDs starting with hyphens (e.g. -ntsqYRrjic)
+    output_arg = None
+    args_clean = []
+    skip_next = False
+    for i, a in enumerate(sys.argv[1:]):
+        if skip_next:
+            skip_next = False
+            continue
+        if a == "--output":
+            if i + 1 < len(sys.argv[1:]):
+                output_arg = sys.argv[1:][i + 1]
+                skip_next = True
+            continue
+        if a.startswith("--output="):
+            output_arg = a.split("=", 1)[1]
+            continue
+        args_clean.append(a)
 
-    extract_studio_short_pure_cdp(args.video_id, args.short_id, args.output)
+    if len(args_clean) < 2:
+        print("Usage: extract_short_pure_cdp.py <video_id> <short_id> [--output OUTPUT]")
+        sys.exit(1)
+
+    a1, a2 = args_clean[0], args_clean[1]
+    if a1.isdigit():
+        short_id = int(a1)
+        video_id = a2
+    elif a2.isdigit():
+        short_id = int(a2)
+        video_id = a1
+    else:
+        video_id = a1
+        short_id = a2
+
+    extract_studio_short_pure_cdp(video_id, short_id, output_arg)
+

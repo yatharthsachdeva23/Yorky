@@ -92,16 +92,18 @@ class HermesWatcher:
 
         return None, None
 
-    def get_subagent_live_action(self, delegation_id, goal_text=""):
-        """Extracts the live activity of a subagent from its streaming task-0.log."""
+    def get_subagent_live_action(self, delegation_id, task_index=0, goal_text=""):
+        """Extracts the live activity of a subagent from its streaming task-<idx>.log."""
         profile_dir = os.path.dirname(self.db_path)
         log_dir = os.path.join(profile_dir, "cache", "delegation", "live", delegation_id)
-        log_file = os.path.join(log_dir, "task-0.log")
+        log_file = os.path.join(log_dir, f"task-{task_index}.log")
 
         short_num = ""
         m_short = re.search(r'Short\s*#?(\d+)', goal_text, re.IGNORECASE)
         if m_short:
-            short_num = f"Short #{m_short.group(1)}: "
+            short_num = f"#{m_short.group(1)}: "
+        elif task_index is not None:
+            short_num = f"T{task_index}: "
 
         if not os.path.exists(log_file):
             return f"{short_num}Starting up..."
@@ -112,14 +114,18 @@ class HermesWatcher:
 
             for line in reversed(lines[-20:]):
                 low = line.lower()
+                if "status=completed" in low or "exit_reason=completed" in low:
+                    return f"{short_num}Done! ✨"
+                if "status=failed" in low or "exit_reason=failed" in low:
+                    return f"{short_num}Failed ❌"
                 if "ingest_short" in low and ("terminal" in low or "success" in low):
-                    return f"{short_num}Ingesting to DB..."
+                    return f"{short_num}Ingesting DB..."
                 if "verify_short" in low:
                     return f"{short_num}Verifying tables..."
                 if "write_file" in low and "payload" in low:
                     return f"{short_num}Writing payload..."
                 if "extract_short" in low:
-                    return f"{short_num}Extracting metrics via CDP..."
+                    return f"{short_num}Extracting CDP..."
                 if "browser_navigate" in low:
                     return f"{short_num}Navigating Studio..."
                 if "browser_click" in low or "browser_snapshot" in low:
@@ -140,7 +146,7 @@ class HermesWatcher:
                 if "execute_code(" in low:
                     return f"{short_num}Processing data..."
                 if "think" in low:
-                    return f"{short_num}Analyzing metrics..."
+                    return f"{short_num}Thinking..."
 
             return f"{short_num}Working..."
         except Exception:
@@ -161,18 +167,69 @@ class HermesWatcher:
                 ORDER BY dispatched_at ASC
             """)
             rows = cur.fetchall()
+            conn.close()
+
+            profile_dir = os.path.dirname(self.db_path)
+            live_root = os.path.join(profile_dir, "cache", "delegation", "live")
+
             for row in rows:
                 did = row[0]
                 tdata = json.loads(row[2]) if row[2] else {}
-                goal = tdata.get('goal', '') or tdata.get('description', '')
-                action_text = self.get_subagent_live_action(did, goal)
-                subagents.append({
-                    "id": did,
-                    "goal": goal,
-                    "action": action_text,
-                    "dispatched_at": row[3]
-                })
-            conn.close()
+                dispatched_at = row[3]
+
+                # 1. Check live manifest on disk for multi-task / batch breakdown
+                manifest_path = os.path.join(live_root, did, "manifest.json")
+                tasks_found = []
+
+                if os.path.exists(manifest_path):
+                    try:
+                        with open(manifest_path, "r", encoding="utf-8", errors="ignore") as mf:
+                            m_data = json.load(mf)
+                            tasks_found = m_data.get("tasks", [])
+                    except Exception:
+                        pass
+
+                if tasks_found:
+                    for t in tasks_found:
+                        idx = t.get("index", 0)
+                        goal = t.get("goal", "")
+                        status = t.get("status", "running")
+                        action_text = self.get_subagent_live_action(did, task_index=idx, goal_text=goal)
+                        subagents.append({
+                            "id": f"{did}_task_{idx}",
+                            "delegation_id": did,
+                            "task_index": idx,
+                            "goal": goal,
+                            "status": status,
+                            "action": action_text,
+                            "dispatched_at": dispatched_at
+                        })
+                else:
+                    # 2. Check SQLite task_json for goals list
+                    goals_list = tdata.get("goals", [])
+                    if goals_list and len(goals_list) > 1:
+                        for idx, g in enumerate(goals_list):
+                            action_text = self.get_subagent_live_action(did, task_index=idx, goal_text=g)
+                            subagents.append({
+                                "id": f"{did}_task_{idx}",
+                                "delegation_id": did,
+                                "task_index": idx,
+                                "goal": g,
+                                "action": action_text,
+                                "dispatched_at": dispatched_at
+                            })
+                    else:
+                        # 3. Single task fallback
+                        goal = tdata.get('goal', '') or tdata.get('description', '')
+                        action_text = self.get_subagent_live_action(did, task_index=0, goal_text=goal)
+                        subagents.append({
+                            "id": did,
+                            "delegation_id": did,
+                            "task_index": 0,
+                            "goal": goal,
+                            "action": action_text,
+                            "dispatched_at": dispatched_at
+                        })
         except Exception:
             pass
         return subagents
