@@ -4,7 +4,6 @@ echo [1/2] Checking if Chrome is already running on port 9222...
 netstat -ano | findstr :9222 >nul
 if %errorlevel% equ 0 (
     echo [*] Chrome is ALREADY running on port 9222!
-    pause
     exit /b 0
 )
 
