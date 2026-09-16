@@ -8,6 +8,8 @@ Assigns tasks, collects reports, reviews work, and provides executive summaries 
 import os
 import json
 import httpx
+from dotenv import load_dotenv
+load_dotenv()
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -20,7 +22,7 @@ class HermyPersonalAssistant:
     def __init__(self, config_path: str = r"C:\Users\DELL\AppData\Local\hermes\config.yaml"):
         self.config_path = config_path
         self.bus = EventBus()
-        self.api_key = "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"
+        self.api_key = os.getenv("NVIDIA_API_KEY", "")
         self.model = "nvidia/nemotron-3-super-120b-a12b"
         self.base_url = "https://integrate.api.nvidia.com/v1"
         self.domains = {

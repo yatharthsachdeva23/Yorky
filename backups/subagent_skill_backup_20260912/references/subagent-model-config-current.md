@@ -7,7 +7,7 @@ delegation:
   model: nvidia/nemotron-3.5-lightning-30b-a3b
   provider: custom
   base_url: https://integrate.api.nvidia.com/v1
-  api_key: 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
+  api_key: ${NVIDIA_API_KEY}
   api_mode: chat_completions
   max_iterations: 50
   max_concurrent_children: 1

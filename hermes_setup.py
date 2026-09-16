@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import httpx
+from dotenv import load_dotenv
+load_dotenv()
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -13,7 +15,7 @@ You excel at reasoning, task planning, decision making, tool orchestration, and 
 Respond clearly, concisely, and act as an expert autonomous master agent.
 """
 
-NVIDIA_API_KEY = "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"
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 NVIDIA_MODEL = "z-ai/glm-5.2"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
