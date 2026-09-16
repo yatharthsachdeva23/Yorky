@@ -663,6 +663,9 @@ def build_payload(short_id: int, video_id: str, extracted: dict) -> dict:
     comments_analysis, individual_comments = parse_comments(comments, ref_dt)
     raw_cpk = comments_analysis['total_comments'] / max(perf['views'], 1) * 1000
     comments_analysis['comments_per_1k_views'] = min(round(raw_cpk, 1), 9999.0)
+    perf['comments_count'] = len(individual_comments)
+    if perf['views'] > 0:
+        perf['engagement_rate'] = round((perf['likes'] + perf['comments_count'] + perf['shares']) / perf['views'] * 100, 2)
     title_meta = extract_title_metadata(metadata, title)
 
     # 1. Published Date Extraction
