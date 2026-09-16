@@ -24,6 +24,9 @@ import argparse
 import urllib.request
 import websocket
 
+# Ensure current script directory is in sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Force UTF-8 encoding for Windows terminal safely
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -309,106 +312,29 @@ def extract_studio_short_pure_cdp(video_id: str, short_id: int, output_path: str
             is_verified = any(kw in (text or '').lower() for kw in expected_keywords)
             print(f"     [{label}] Captured ({len(text or '')} chars, verified_cards={is_verified})")
 
-        # ── 3. COMMENTS TAB ──
-        print("  -> Navigating to Comments tab...")
-        comments_url = f"https://studio.youtube.com/video/{video_id}/comments"
-        cdp_eval(ws, f"window.location.href = '{comments_url}';", req_id)
-        req_id += 1
-        time.sleep(3.0)
-        check_and_click_retry(ws, req_id)
-
-        # Remove Unresponded / response status filter chip with robust selector
-        filter_code = """
-        (() => {
-            // 1. Search all chip variants
-            const chips = document.querySelectorAll('ytcp-chip-bar ytcp-chip, ytcp-filter-chip, .filter-chip, [role="button"]');
-            for (const chip of chips) {
-                const text = (chip.innerText || chip.textContent || '').toLowerCase();
-                if (text.includes('unresponded') || text.includes('response status') || text.includes('responded') || text.includes('questions')) {
-                    const closeBtn = chip.querySelector('button, [aria-label*="remove" i], [aria-label*="close" i], .close-button, ytcp-icon-button, [icon="close"]');
-                    if (closeBtn) { closeBtn.click(); return 'clicked_close_btn'; }
-                    chip.click(); return 'clicked_chip_direct';
-                }
-            }
-            // 2. Specific filter-bar remove button
-            const filterBar = document.querySelector('ytcp-filter-bar');
-            if (filterBar) {
-                const removeBtns = filterBar.querySelectorAll('ytcp-icon-button[aria-label*="remove" i], ytcp-icon-button[aria-label*="close" i], button.close-button, ytcp-icon-button[id="delete-button"]');
-                if (removeBtns.length > 0) {
-                    removeBtns[0].click();
-                    return 'clicked_filter_bar_remove';
-                }
-            }
-            return 'not_found';
-        })()
-        """
-        filter_status = cdp_eval(ws, filter_code, req_id)
-        req_id += 1
-        print(f"     Unresponded filter status: {filter_status}")
-        if filter_status in ('clicked_close_btn', 'clicked_chip_direct'):
-            time.sleep(2.0)
-
-        # Poll dynamically for up to 10s for comments to render or confirm empty
-        comments_map = {}
-        for _ in range(20):
-            time.sleep(0.5)
-            t_count = cdp_eval(ws, "document.querySelectorAll('ytcp-comment-thread').length", req_id)
-            req_id += 1
-            if t_count and t_count > 0:
-                break
-            body_txt = cdp_eval(ws, "document.body ? document.body.innerText : ''", req_id) or ""
-            req_id += 1
-            if "no comments" in body_txt.lower() or "nothing to show" in body_txt.lower():
-                break
-
-        # Scroll virtualized comments
-        for step in range(15):
-            scroll_code = """
-            (() => {
-                const container = document.querySelector('ytcp-activity-section') || document.querySelector('main');
-                if (!container) return {status: 'no_container'};
-                
-                container.scrollTop += 400;
-                const isBottom = (container.scrollTop + container.clientHeight >= container.scrollHeight - 50);
-                
-                const threads = Array.from(document.querySelectorAll('ytcp-comment-thread'));
-                const extracted = threads.map(t => {
-                    const authorEl = t.querySelector('#author-text, .author-text');
-                    const contentEl = t.querySelector('#content-text, .content-text');
-                    const dateEl = t.querySelector('#published-time-text, .published-time-text');
-                    const replyCountEl = t.querySelector('#reply-count, .reply-count');
-                    const pinnedEl = t.querySelector('#pinned-comment-badge, .pinned-comment-badge, [aria-label*="Pinned"], [aria-label*="pinned"]');
-                    const cid = t.getAttribute('id') || ((authorEl ? authorEl.textContent.trim() : '') + (contentEl ? contentEl.textContent.trim() : ''));
-                    
-                    return {
-                        id: cid,
-                        author: authorEl ? authorEl.textContent.trim() : '',
-                        text: contentEl ? contentEl.textContent.trim() : '',
-                        date: dateEl ? dateEl.textContent.trim() : '',
-                        reply_count: replyCountEl ? replyCountEl.textContent.trim() : '0',
-                        is_pinned: pinnedEl !== null
-                    };
-                }).filter(c => c.text);
-                
-                return {
-                    isBottom: isBottom,
-                    comments: extracted
-                };
-            })()
-            """
-            scroll_res = cdp_eval(ws, scroll_code, req_id)
-            req_id += 1
-            if not scroll_res or scroll_res.get("status") == "no_container":
-                break
-            for c in scroll_res.get("comments", []):
-                if c["id"] and c["id"] not in comments_map:
-                    comments_map[c["id"]] = c
-            if scroll_res.get("isBottom"):
-                break
-            time.sleep(0.2)
-
-        extracted_data["comments"] = list(comments_map.values())
-        print(f"     [Comments] Captured {len(extracted_data['comments'])} comments")
+        # ── 3. COMMENTS EXTRACTION (Innertube 100% Engine) ──
+        print("  -> Extracting comments via Innertube API engine...")
+        comments_list = []
+        try:
+            from extract_all_comments import extract_all_comments
+            raw_comments, _ = extract_all_comments(video_id)
+            for c in raw_comments:
+                comments_list.append({
+                    "id": c["comment_id"],
+                    "author": c["author_name"],
+                    "text": c["text"],
+                    "date": c.get("published_raw", ""),
+                    "like_count": c.get("like_count", 0),
+                    "reply_count": c.get("reply_count", 0),
+                    "is_pinned": c.get("is_pinned", False),
+                    "parent_comment_id": c.get("parent_comment_id"),
+                    "depth": c.get("depth", 0),
+                    "is_creator": c.get("is_creator", False)
+                })
+            print(f"     [Comments] Captured {len(comments_list)} comments (100% threads + nested replies)")
+        except Exception as e:
+            print(f"     [Comments] Innertube extraction warning ({e})")
+        extracted_data["comments"] = comments_list
 
         # ── 4. DETAILS / EDIT PAGE ──
         print("  -> Navigating to Details/Edit...")
