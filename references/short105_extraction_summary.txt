@@ -1,0 +1,22 @@
+Comment Extraction Summary for short ID 105 (aFGUvq0rF8E)
+
+Extraction finished in 3.18s:
+- Reported Header Total: 3
+- Extracted Unique Comments: 3
+- Top-Level Threads: 2
+- Nested Replies: 1
+- Questions: 1 | Gratitude: 0
+
+Successfully synced 3 comments to PostgreSQL!
+
+Sample extracted comments:
+[THREAD] #1 @GIGACHADVLOGGER (1 year ago) - Likes: 0 [FEEDBACK]
+         "Emcee waalo ke mzee h"
+
+[THREAD] #2 @Pas955 (1 year ago) - Likes: 0 [QUESTION]
+         "Girl name?"
+
+[REPLY] #3 @YatharthSachdeva23 (1 year ago) - Likes: 0 [FEEDBACK]
+         "Sahi baat hai 😂"
+
+Saved to: data\comments_aFGUvq0rF8E.json
