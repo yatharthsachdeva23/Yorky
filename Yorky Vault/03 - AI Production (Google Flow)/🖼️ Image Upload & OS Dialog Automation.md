@@ -4,72 +4,81 @@ created: 2026-09-21
 updated: 2026-09-21
 ---
 
-# 🖼️ Image Upload & OS File Dialog Automation for Google Flow
+# 🖼️ Image Upload & OS File Dialog Protocol
 
-> [!SUCCESS] Autonomous Image & Media Uploading
-> When adding reference images, avatar portraits, or style assets into Google Flow (or YouTube Studio), clicking "Upload" or "Add media" triggers a native Windows OS file picker. Yorky uses `scripts/handle_file_dialog.py` to bypass or auto-fill this dialog in seconds.
-
----
-
-## ⚡ How It Works (Dual-Engine Architecture)
-
-`scripts/handle_file_dialog.py` runs with a dual-engine watcher for `--timeout` seconds (default 25s):
-
-1. **Primary: Chrome CDP File Chooser Interceptor**
-   * Connects to Chrome port `9222` on the active Google Flow tab.
-   * Enables `Page.setInterceptFileChooserDialog`.
-   * When Google Flow triggers a file upload, Chrome intercepts the event (`Page.fileChooserOpened`) and injects the file directly via `DOM.setFileInputFiles`.
-   * **Result: The native Windows OS dialog never even opens on screen.**
-
-2. **Fallback: Native Windows OS Dialog Auto-Filler**
-   * If an OS dialog does appear (e.g. titled "Open" or "Select a file to upload"), the script activates the window, focuses the file input with `Alt + N`, pastes the absolute path, and presses `{ENTER}`.
+> [!SUCCESS] In-Platform Asset Ingestion Architecture
+> Google Flow image and photo asset ingestion is driven directly in the browser via CDP. Native Windows file chooser dialogs (`#32770`) are handled concurrently via the `scripts/handle_file_dialog.py` OS bridge until native system privileges are enabled.
 
 ---
 
-### Option A: Complete One-Command Auto-Upload (Recommended for Google Flow)
-Yorky can upload any image directly to Google Flow with zero manual clicks or coordinates needed:
+## 🧭 Architecture & Layer Division
 
-```bash
-python scripts/handle_file_dialog.py --file "C:\path\to\image.png" --flow
+```text
+[Chrome Browser (Profile 8)]                    [Windows OS Layer]
+  │                                                    │
+  ├─ 1. Arm OS Handler in background ──────────────────┼──> python scripts/handle_file_dialog.py
+  │                                                    │      (Watches WinSta0\default & CDP)
+  ├─ 2. Click button[aria-label="Add media menu"]       │
+  ├─ 3. Click menuitem "Upload"                        │
+  │     │                                              │
+  │     └── Triggers File Chooser ─────────────────────┼──> [CDP DOM.setFileInputFiles OR
+  │                                                    │     Win32 AttachThreadInput + SetWindowTextW]
+  ├─ 4. Asset uploads to Flow CDN                      │
+  └─ 5. Verify image in Media Gallery ─────────────────┘
 ```
-*What happens:*
-1. Arms the file chooser interceptor on the active Google Flow tab.
-2. Automatically triggers the "Add media menu" -> "Upload" flow via CDP.
-3. Automatically injects the file and attaches it to the media gallery in <4 seconds.
+
+### 1. Browser Execution Layer (Google Flow DOM)
+All platform interaction executes directly on the active Flow tab:
+* **Header Trigger**: `<button aria-label="Add media menu">` at coordinates `(1270, 38)`
+* **Menu Selection**: `<button role="menuitem">` with text `"Upload"` at coordinates `(1343.8, 86)`
+* **Asset Confirmation**: `<flow-grid-tile-container>` in "All media" or "Uploads"
+
+### 2. Native OS Bridge Layer (`handle_file_dialog.py`)
+Browser automation tools cannot cross the desktop boundary to interact with Windows `#32770` modal windows. The script bridges this gap:
+* **Desktop Isolation**: Switches worker thread to `WinSta0\default` (`OpenDesktopW` + `SetThreadDesktop`).
+* **UIPI & Message Queues**: Connects to the dialog thread via `AttachThreadInput(cur_tid, target_tid, True)`.
+* **Control Injection**: Injects absolute file path into `Edit` (`id=1148` / `1001`) via `SetWindowTextW`, then fires `BM_CLICK` on `&Open` (`id=1`).
+* **CDP Fast-Path**: Arms `Page.setInterceptFileChooserDialog` to catch `Page.fileChooserOpened` and feed `DOM.setFileInputFiles` before the OS window renders.
 
 ---
 
-### Option B: If the OS Dialog is Already Open On-Screen
-If the dialog is already open and waiting for input:
+## 📋 Operational Step-by-Step Sequence
+
+### Step 1: Arm the OS Bridge in Background
+Before triggering the upload in Flow:
+```powershell
+Start-Process python -ArgumentList 'scripts/handle_file_dialog.py', '--file', '\"C:\path\to\image.png\"', '--timeout', '30'
+```
+
+### Step 2: Trigger Upload in Google Flow
+Execute via CDP / browser tool:
+```javascript
+// 1. Expand media menu
+document.querySelector('button[aria-label="Add media menu"]').click();
+
+// 2. Click Upload menuitem
+setTimeout(() => {
+  const items = Array.from(document.querySelectorAll('[role="menuitem"], button'));
+  const uploadBtn = items.find(el => el.textContent.trim().includes('Upload'));
+  if (uploadBtn) uploadBtn.click();
+}, 400);
+```
+
+### Step 3: Confirm Asset Ingestion
+Inspect the gallery:
+```javascript
+const uploaded = Array.from(document.querySelectorAll('flow-grid-tile-container, img'))
+  .some(el => (el.getAttribute('aria-label') || el.src || '').includes('image_name'));
+```
+
+---
+
+## 🛠️ On-Screen Dialog Recovery
+If a `#32770` "Open" dialog is already open on screen:
 ```bash
 python scripts/handle_file_dialog.py --file "C:\path\to\image.png"
 ```
-*What happens:*
-1. Switches to `WinSta0\default` interactive desktop.
-2. Uses Win32 `AttachThreadInput` to join input queues with the dialog.
-3. Injects the absolute path into the `Edit` control via `SetWindowTextW`.
-4. Clicks the `&Open` button (`BM_CLICK` / Enter) and dismisses the window cleanly.
-
----
-
-### Option C: Arming in Background Before Custom Actions
-```powershell
-Start-Process python -ArgumentList 'scripts/handle_file_dialog.py', '--file', '\"C:\path\to\image.png\"', '--timeout', '25'
-```
-*Then click any upload button in YouTube Studio or Google Flow.*
-
----
-
-### Option D: In Python Production Scripts
-```python
-from scripts.handle_file_dialog import arm_file_dialog_handler
-
-handler = arm_file_dialog_handler(r"C:\path\to\avatar_reference.png", timeout=25)
-# ... perform upload action ...
-success = handler.wait(timeout=10)
-if success:
-    print("Image attached successfully!")
-```
+Immediately binds to the active dialog HWND, injects the path, clicks Open, and closes it.
 
 ---
 
