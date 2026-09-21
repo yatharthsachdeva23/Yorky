@@ -42,4 +42,4 @@ created: 2026-09-20
 
 **KEY RULE**: Must click Clip 2's timeline segment (10-20s position) before clicking "+" for Clip 3, otherwise Clip 3 inserts after Clip 1.
 
-See also: [[👤 Master Avatar & Studio Anchor]] • [[⏱️ Retention & Hook Playbook]] • [[🎞️ Google Flow Timeline Assembly]]
+See also: [[👤 Master Avatar & Studio Anchor]] • [[⏱️ Retention & Hook Playbook]] • [[🎞️ Google Flow Timeline Assembly]] • [[🖼️ Image Upload & OS Dialog Automation]]
