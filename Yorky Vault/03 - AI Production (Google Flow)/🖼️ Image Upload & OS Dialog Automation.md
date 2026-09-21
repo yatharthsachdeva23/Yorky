@@ -26,44 +26,50 @@ updated: 2026-09-21
 
 ---
 
-## 🚀 How Yorky Executes It
+### Option A: Complete One-Command Auto-Upload (Recommended for Google Flow)
+Yorky can upload any image directly to Google Flow with zero manual clicks or coordinates needed:
 
-### Option A: In the Terminal (Run in Background Before Clicking)
-Before clicking "Add media" / "Upload image" in Google Flow, Yorky launches the handler:
-
-```powershell
-# Arms the handler for 25 seconds in the background
-Start-Process python -ArgumentList 'scripts/handle_file_dialog.py', '--file', '\"C:\path\to\image.png\"', '--timeout', '25'
+```bash
+python scripts/handle_file_dialog.py --file "C:\path\to\image.png" --flow
 ```
-*Then Yorky clicks the upload button in Google Flow via CDP.*  
-The handler intercepts it immediately, selects the image, and exits.
+*What happens:*
+1. Arms the file chooser interceptor on the active Google Flow tab.
+2. Automatically triggers the "Add media menu" -> "Upload" flow via CDP.
+3. Automatically injects the file and attaches it to the media gallery in <4 seconds.
 
 ---
 
-### Option B: In Python Automation Scripts
+### Option B: If the OS Dialog is Already Open On-Screen
+If the dialog is already open and waiting for input:
+```bash
+python scripts/handle_file_dialog.py --file "C:\path\to\image.png"
+```
+*What happens:*
+1. Switches to `WinSta0\default` interactive desktop.
+2. Uses Win32 `AttachThreadInput` to join input queues with the dialog.
+3. Injects the absolute path into the `Edit` control via `SetWindowTextW`.
+4. Clicks the `&Open` button (`BM_CLICK` / Enter) and dismisses the window cleanly.
+
+---
+
+### Option C: Arming in Background Before Custom Actions
+```powershell
+Start-Process python -ArgumentList 'scripts/handle_file_dialog.py', '--file', '\"C:\path\to\image.png\"', '--timeout', '25'
+```
+*Then click any upload button in YouTube Studio or Google Flow.*
+
+---
+
+### Option D: In Python Production Scripts
 ```python
 from scripts.handle_file_dialog import arm_file_dialog_handler
 
-# 1. Arm handler for 25 seconds
 handler = arm_file_dialog_handler(r"C:\path\to\avatar_reference.png", timeout=25)
-
-# 2. Click the upload button in Google Flow via CDP
-# ... click element ...
-
-# 3. Wait for file to attach (returns True on success)
+# ... perform upload action ...
 success = handler.wait(timeout=10)
 if success:
     print("Image attached successfully!")
 ```
-
----
-
-### Option C: If the OS Dialog is Already Open On-Screen
-If the dialog is already open and blocking Chrome:
-```bash
-python scripts/handle_file_dialog.py --file "C:\path\to\image.png"
-```
-It immediately detects the open dialog, inputs the path, presses Enter, and dismisses the window in <1 second.
 
 ---
 
