@@ -7,7 +7,7 @@ updated: 2026-09-21
 # 🖼️ Image Upload & OS File Dialog Protocol
 
 > [!SUCCESS] In-Platform Asset Ingestion Architecture
-> Google Flow image and photo asset ingestion is driven directly in the browser via CDP. Native Windows file chooser dialogs (`#32770`) are handled concurrently via the `scripts/handle_file_dialog.py` OS bridge until native system privileges are enabled.
+> Google Flow image and photo asset ingestion is driven directly in the browser via CDP. Native Windows file chooser dialogs (`#32770`) are handled concurrently via the `scripts/handle_file_dialog.py` OS bridge.
 
 ---
 

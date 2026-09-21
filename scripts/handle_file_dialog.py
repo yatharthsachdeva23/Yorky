@@ -1,10 +1,9 @@
 """
-Robust Dual-Engine File Dialog Handler & Auto-Uploader for Google Flow & YouTube Studio.
-Solves the native OS file picker blocking issue by:
-1. Win32 Desktop Switching to WinSta0\\default so background processes can see user dialogs.
-2. Win32 AttachThreadInput + SetWindowTextW + BM_CLICK to reliably inject path and submit native dialogs.
-3. Chrome CDP File Chooser Interception to bypass the OS dialog altogether at the browser level.
-4. Optional --flow flag to trigger the entire Google Flow upload sequence end-to-end autonomously.
+Robust Dual-Engine File Dialog Handler for Web & OS Uploads.
+Handles native OS file picker blocking by:
+1. Win32 Desktop Switching to WinSta0\\default so background processes can access user dialogs.
+2. Win32 AttachThreadInput + SetWindowTextW + BM_CLICK to reliably inject path and submit native #32770 dialogs.
+3. Chrome CDP File Chooser Interception to inject files via DOM.setFileInputFiles when triggered.
 """
 
 import sys
@@ -352,59 +351,11 @@ def arm_file_dialog_handler(file_path: str, timeout: float = 30.0, port: int = C
     return handler
 
 
-def trigger_flow_upload_click(port: int = CDP_DEFAULT_PORT):
-    """Triggers the 'Add media menu' and 'Upload' button in Google Flow via CDP mouse events."""
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/json/list")
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            tabs = json.loads(resp.read().decode('utf-8'))
-        
-        target_tab = next((t for t in tabs if 'flow.google.com' in t.get('url', '') and t.get('type') == 'page'), None)
-        if not target_tab:
-            print("[!] Google Flow tab not found in Chrome.")
-            return False
-
-        ws_url = target_tab.get('webSocketDebuggerUrl')
-        ws = websocket.create_connection(ws_url, suppress_origin=True, timeout=5)
-        
-        mid = 0
-        def cdp_send(method, params):
-            nonlocal mid
-            mid += 1
-            ws.send(json.dumps({"id": mid, "method": method, "params": params}))
-            return json.loads(ws.recv())
-
-        def cdp_click(x, y):
-            for t in ['mouseMoved', 'mousePressed', 'mouseReleased']:
-                p = {'type': t, 'x': x, 'y': y}
-                if t != 'mouseMoved':
-                    p['button'] = 'left'
-                    p['clickCount'] = 1
-                cdp_send('Input.dispatchMouseEvent', p)
-
-        # 1. Click "Add media menu" button at (1270, 38)
-        print("[*] [Auto-Flow] Clicking 'Add media menu' button...")
-        cdp_click(1270, 38)
-        time.sleep(0.6)
-
-        # 2. Click "Upload" menu item at (1343.8, 86)
-        print("[*] [Auto-Flow] Clicking 'Upload' menu item...")
-        cdp_click(1343.8, 86)
-        time.sleep(0.5)
-
-        ws.close()
-        return True
-    except Exception as e:
-        print(f"[!] Error in trigger_flow_upload_click: {e}")
-        return False
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Auto-handle Google Flow / Windows file picker dialogs.")
+    parser = argparse.ArgumentParser(description="Auto-handle OS file picker dialogs.")
     parser.add_argument("--file", "-f", required=True, help="Absolute path to the image/media file.")
     parser.add_argument("--timeout", "-t", type=float, default=30.0, help="Seconds to watch (default: 30s).")
     parser.add_argument("--port", "-p", type=int, default=CDP_DEFAULT_PORT, help="Chrome CDP port (default: 9222).")
-    parser.add_argument("--flow", action="store_true", help="Automatically click Add Media -> Upload in Google Flow.")
     args = parser.parse_args()
 
     file_path = os.path.abspath(args.file)
@@ -413,20 +364,15 @@ def main():
         sys.exit(1)
 
     print("=======================================================")
-    print("  Google Flow & Web OS File Dialog Auto-Handler")
+    print("  OS File Dialog & File Chooser Auto-Handler")
     print("=======================================================")
 
     handler = FileDialogHandler(file_path, timeout=args.timeout, port=args.port)
     handler.start()
 
-    if args.flow:
-        time.sleep(0.5)
-        print("[*] Automatically triggering Google Flow UI upload button...")
-        trigger_flow_upload_click(port=args.port)
-
     print(f"[*] Handler is ACTIVE for {args.timeout}s.")
     print("[*] If dialog is already open, it will be handled immediately.")
-    print("[*] If not open yet, click 'Add media' or 'Upload' now.")
+    print("[*] If not open yet, click 'Upload' in the application now.")
 
     success = handler.wait()
     if success:
