@@ -422,6 +422,32 @@ class HermesWatcher:
                     pass
             return "WAITING", f"Status: {str(e)[:20]}"
 
+    def get_latest_activity_metrics(self):
+        """Returns (max_msg_id, log_mtime) for detecting new activity."""
+        max_id = 0
+        log_mtime = 0.0
+
+        if os.path.exists(self.agent_log_path):
+            try:
+                log_mtime = os.path.getmtime(self.agent_log_path)
+            except Exception:
+                pass
+
+        if os.path.exists(self.db_path):
+            try:
+                conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=1.0)
+                cur = conn.cursor()
+                cur.execute("SELECT MAX(id) FROM messages")
+                row = cur.fetchone()
+                if row and row[0]:
+                    max_id = row[0]
+                conn.close()
+            except Exception:
+                pass
+
+        return max_id, log_mtime
+
+
 if __name__ == "__main__":
     w = HermesWatcher()
     st, act = w.get_state()
